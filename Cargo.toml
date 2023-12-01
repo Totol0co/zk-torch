@@ -3,8 +3,6 @@ name = "f_mul"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 ark-std = "*"
 ark-poly = "*"
@@ -12,4 +10,5 @@ ark-ff = "*"
 ark-ec = "*"
 rand = "*"
 ark-bls12-381 = "*"
+ark-msm = {"git" = "https://github.com/snarkify/arkmsm.git" }
 
