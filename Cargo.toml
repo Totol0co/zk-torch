@@ -4,11 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ark-std = "*"
-ark-poly = "*"
-ark-ff = "*"
-ark-ec = "*"
+ark-std = "0.4"
+ark-ff = "0.4"
+ark-ec = "0.4"
+ark-poly = "0.4"
+ark-bls12-381 = "0.4"
 rand = "*"
-ark-bls12-381 = "*"
-ark-msm = {"git" = "https://github.com/snarkify/arkmsm.git" }
 
