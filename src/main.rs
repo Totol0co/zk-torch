@@ -1,20 +1,21 @@
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
-use ark_ec::{Group, CurveGroup, VariableBaseMSM, pairing::Pairing};
+use ark_ec::{Group, CurveGroup, AffineRepr, VariableBaseMSM, pairing::Pairing};
 use ark_ff::{Field};
-use ark_poly::{evaluations::univariate::Evaluations, GeneralEvaluationDomain, EvaluationDomain,univariate::DensePolynomial};
+use ark_poly::{evaluations::univariate::Evaluations, GeneralEvaluationDomain, EvaluationDomain,univariate::DensePolynomial, Polynomial};
 use ark_bls12_381::{Fr, G1Projective, G2Projective, G1Affine, G2Affine, Bls12_381};
-use ark_std::{Zero, One, ops::{Mul,Add,Sub}, UniformRand};
+use ark_std::{Zero, One, ops::{Mul,Div,Sub}, UniformRand};
 use std::collections::HashMap;
 use std::time::Instant;
 mod util;
 mod g_fft;
-const N : usize = 1<<5;
+const N : usize = 1<<8;
 const n : usize = 1<<3;
 
 fn main() {
   let mut rng = ark_std::test_rng();
   // gen(N, t):
+  let mut start = Instant::now();
   let x = Fr::rand(&mut rng);
   let mut xp = x;
   let mut srs = vec![G1Projective::generator() ; N];
@@ -40,7 +41,7 @@ fn main() {
   let f = Evaluations::from_vec_and_domain(f_i.clone(), domain_n).interpolate();
   let Z_V_x_2 = srs2[N] - srs2[0];
   let T = Evaluations::from_vec_and_domain(table.clone(), domain_N).interpolate();
-  let T_x_2 = G2Projective::msm(&srs2_affine[..N], &T.coeffs).unwrap();
+  let T_x_2 = G2Projective::msm(&srs2_affine[..N], &T).unwrap();
   let mut temp = T.coeffs[1..].to_vec();
   temp.resize(N*2-1,Fr::zero());
   let mut temp2 = srs.clone();
@@ -59,11 +60,13 @@ fn main() {
     L_i_0_x_1[i] *= domain_N.group_gen_inv().pow(&[i as u64]);
     L_i_0_x_1[i] -= temp;
   }
-  let f_x_1 = G1Projective::msm(&srs_affine[..n], &f.coeffs).unwrap();
+  let f_x_1 = G1Projective::msm(&srs_affine[..n], &f).unwrap();
   let mut table_dict = HashMap::new();
   for i in 0..N{
     table_dict.insert(table[i],i);
   }
+  println!("setup: {:?}",start.elapsed());
+  start = Instant::now();
   
   // IsInTable(f_x_1, table, srs; f):
   // Round 1
@@ -84,20 +87,42 @@ fn main() {
   let B_i : Vec<Fr>= (0..n).map(|i| (f_i[i]+beta).inverse().unwrap()).collect();
   let B = Evaluations::from_vec_and_domain(B_i.clone(), domain_n).interpolate();
   let B_0 = DensePolynomial{coeffs : B.coeffs[1..].to_vec()};
-  let B_0_x_1 = G1Projective::msm(&srs_affine[0..n-1], &B_0.coeffs).unwrap();
-  let mut Q_B = B.mul(&(f.add(DensePolynomial{coeffs:vec![beta]})));
+  let B_0_x_1 = G1Projective::msm(&srs_affine[0..n-1], &B_0).unwrap();
+  let mut Q_B = B.mul(&(f.clone() + (DensePolynomial{coeffs:vec![beta]})));
   Q_B = Q_B.sub(&DensePolynomial{coeffs:vec![Fr::one()]}).divide_by_vanishing_poly(domain_n).unwrap().0;
-  let Q_B_x_1 = G1Projective::msm(&srs_affine[0..n-1], &Q_B.coeffs).unwrap();
-  let P_x_1 = G1Projective::msm(&srs_affine[N-n+1..N], &B_0.coeffs).unwrap();
+  let Q_B_x_1 = G1Projective::msm(&srs_affine[0..n-1], &Q_B).unwrap();
+  let P_x_1 = G1Projective::msm(&srs_affine[N-n+1..N], &B_0).unwrap();
   let lhs = Bls12_381::pairing(A_x_1,T_x_2);
   let rhs = Bls12_381::pairing(Q_A_x_1,Z_V_x_2) + Bls12_381::pairing(m_x_1 - A_x_1 * beta, srs2[0]);
   assert!(lhs==rhs);
   let lhs = Bls12_381::pairing(B_0_x_1,srs2[N-1-(n-2)]);
   let rhs = Bls12_381::pairing(P_x_1,srs2[0]);
   assert!(lhs==rhs);
+
+  //Round 3
+  let gamma = Fr::rand(&mut rng);
+  let eta = Fr::rand(&mut rng);
+  let B_0_gamma = B_0.evaluate(&gamma);
+  let f_gamma = f.evaluate(&gamma);
+  let A_0 = Fr::from(N as u32).inverse().unwrap() * A_i.iter().map(|(_,y)| *y).sum::<Fr>();
+  let b_0 = Fr::from(N as u32) * A_0 * Fr::from(n as u32).inverse().unwrap();
+  let Z_H_gamma = domain_n.evaluate_vanishing_polynomial(gamma);
+  let b_gamma = B_0_gamma * gamma + b_0;
+  let Q_b_gamma = (b_gamma * (f_gamma + beta) - Fr::one()) * Z_H_gamma.inverse().unwrap();
+  let v = B_0_gamma + eta * f_gamma + eta * eta * Q_b_gamma;
+  let mut num : Vec<Fr> = (0..n-1).map(|i| B_0[i] + eta * f[i] + eta * eta * Q_B[i]).collect();
+  num.push(eta * f[n-1]);
+  num[0] -= v;
+  let h = DensePolynomial{coeffs:num}.div(&DensePolynomial{coeffs:vec![-gamma,Fr::one()]});
+  let pi_gamma = G1Projective::msm(&srs_affine[..n-1],&h).unwrap();
+  let c = B_0_x_1 + f_x_1 * eta + Q_B_x_1 * eta * eta;
+  let lhs = Bls12_381::pairing(c - G1Affine::generator() * v + pi_gamma * gamma, srs2[0]);
+  let rhs = Bls12_381::pairing(pi_gamma, srs2[1]);
+  assert!(lhs==rhs);
+  let (temp, temp2) : (Vec<G1Affine>,Vec<Fr>)=A_i.iter().map(|(i,y)| (L_i_0_x_1[*i].into_affine(), *y)).unzip();
+  let A_0_x = G1Projective::msm(&temp, &temp2).unwrap();
+  let lhs = Bls12_381::pairing(A_x_1 -  G1Affine::generator() * A_0, srs2[0]);
+  let rhs = Bls12_381::pairing(A_0_x, srs2[1]);
+  assert!(lhs==rhs);
+  println!("proof: {:?}",start.elapsed());
 }
-
-
-
-
-
