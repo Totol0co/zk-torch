@@ -6,61 +6,74 @@ use ark_std::{ops::Mul, ops::Sub, UniformRand};
 use std::time::Instant;
 use rand::Rng;
 
-
+struct Data{
+  raw : Vec<Fr>,
+  poly: DensePolynomial<Fr>,
+  g1: G1Affine
+}
+struct DataEnc{
+  len : usize,
+  g1: G1Affine
+}
 trait BasicBlock{
+  fn run(model: &[Fr],
+         inputs: &[&[Fr]]) ->
+         Vec<Fr>;
   fn setup(srs: (&[G1Affine],&[G2Affine]),
            model: &[Fr]) ->
           (Vec<G1Affine>,Vec<G2Affine>);
   fn prove<R: Rng>(srs: (&[G1Affine],&[G2Affine]),
                    setup: (&[G1Affine],&[G2Affine]),
-                   inputs: &[&[Fr]],
+                   inputs: &[&Data],
+                   output: &Data,
                    rng: &mut R) ->
-                  ((Vec<G1Affine>,Vec<G2Affine>), Vec<Fr>);
+                  (Vec<G1Affine>,Vec<G2Affine>);
   fn verify<R: Rng>(srs: (&[G1Affine],&[G2Affine]),
-                    inputs: &[G1Affine],
+                    inputs: &[&DataEnc],
+                    output: &DataEnc,
                     proof: (&[G1Affine],&[G2Affine]),
-                    output: G1Affine,
                     rng: &mut R);
 }
-
 struct MulBasicBlock;
 impl BasicBlock for MulBasicBlock{
-  fn setup(_: (&[G1Affine],&[G2Affine]),
-           _: &[Fr]) ->
+  fn run(model: &[Fr],
+         inputs: &[&[Fr]]) ->
+         Vec<Fr>{
+    let mut r = Vec::new();
+    for i in 0..inputs[0].len(){
+      r.push(inputs[0][i]*inputs[1][i]);
+    }
+    return r;
+  }
+  fn setup(srs: (&[G1Affine],&[G2Affine]),
+           model: &[Fr]) ->
           (Vec<G1Affine>,Vec<G2Affine>){
     return (Vec::new(), Vec::new());
   }
   fn prove<R: Rng>(srs: (&[G1Affine],&[G2Affine]),
-                   _: (&[G1Affine],&[G2Affine]),
-                   inputs: &[&[Fr]],
-                   _: &mut R) ->
-                  ((Vec<G1Affine>,Vec<G2Affine>), Vec<Fr>){
-    let N = 1<<3; //TODO: fix hardcode
-    let domain  = GeneralEvaluationDomain::<Fr>::new(N).unwrap();
-    let mut r = Vec::new();
-    for i in 0..N{
-      r.push(inputs[0][i]*inputs[1][i]);
-    }
-    let f = DensePolynomial{coeffs: domain.ifft(&inputs[0])};
-    let g = DensePolynomial{coeffs: domain.ifft(&inputs[1])};
-    let h = DensePolynomial{coeffs: domain.ifft(&r)};
-    let gx2 = G2Projective::msm(&srs.1[..N], &g.coeffs).unwrap().into();
-    let t = f.mul(&g).sub(&h).divide_by_vanishing_poly(domain).unwrap().0;
+                   setup: (&[G1Affine],&[G2Affine]),
+                   inputs: &[&Data],
+                   output: &Data,
+                   rng: &mut R) ->
+                  (Vec<G1Affine>,Vec<G2Affine>){
+    let N = inputs[0].raw.len();
+    let domain  = GeneralEvaluationDomain::<Fr>::new(N).unwrap(); //TODO: cache domain generation
+    let gx2 = G2Projective::msm(&srs.1[..N], &inputs[1].poly.coeffs).unwrap().into();
+    let t = inputs[0].poly.mul(&inputs[1].poly).sub(&output.poly).divide_by_vanishing_poly(domain).unwrap().0;
     let tx = G1Projective::msm(&srs.0[..N-1], &t.coeffs).unwrap().into();
-    return ((vec![tx],vec![gx2]),r);
+    return (vec![tx],vec![gx2]);
   }
   fn verify<R: Rng>(srs: (&[G1Affine],&[G2Affine]),
-                    inputs: &[G1Affine],
+                    inputs: &[&DataEnc],
+                    output: &DataEnc,
                     proof: (&[G1Affine],&[G2Affine]),
-                    output: G1Affine,
-                    _: &mut R){
-    let N = 1<<3; //TODO: fix hardcode
+                    rng: &mut R){
     // Verify f(x)*g(x)-h(x)=z(x)t(x)
-    let lhs = Bls12_381::pairing(inputs[0],proof.1[0]) - Bls12_381::pairing(output,srs.1[0]);
-    let rhs = Bls12_381::pairing(proof.0[0],srs.1[N]-srs.1[0]);
+    let lhs = Bls12_381::pairing(inputs[0].g1,proof.1[0]) - Bls12_381::pairing(output.g1,srs.1[0]);
+    let rhs = Bls12_381::pairing(proof.0[0],srs.1[inputs[0].len]-srs.1[0]);
     assert!(lhs==rhs);
     // Verify gx2
-    let lhs = Bls12_381::pairing(inputs[1],srs.1[0]);
+    let lhs = Bls12_381::pairing(inputs[1].g1,srs.1[0]);
     let rhs = Bls12_381::pairing(srs.0[0],proof.1[0]);
     assert!(lhs==rhs);
   }
@@ -89,12 +102,23 @@ fn main() {
     a.push(Fr::rand(&mut rng));
     b.push(Fr::rand(&mut rng));
   }
-  let inputs: Vec<&[Fr]> = vec![&a, &b];
-  let setup = MulBasicBlock::setup(srs,& Vec::new());
-  let (proof,output) = MulBasicBlock::prove(srs,(&(setup.0),&(setup.1)),&inputs,&mut rng);
-  let fx : G1Affine = G1Projective::msm(&srs.0[..N], &domain.ifft(&a)).unwrap().into();
-  let gx : G1Affine = G1Projective::msm(&srs.0[..N], &domain.ifft(&b)).unwrap().into();
-  let hx : G1Affine = G1Projective::msm(&srs.0[..N], &domain.ifft(&output)).unwrap().into();
-  let inputs: Vec<G1Affine> = vec![fx, gx];
-  MulBasicBlock::verify(srs,&inputs,(&(proof.0),&(proof.1)),hx,&mut rng);
+  let inputs : Vec<&[Fr]> = vec![&a, &b];
+  let c = MulBasicBlock::run(&Vec::new(),&inputs);
+  let setup = MulBasicBlock::setup(srs,&Vec::new());
+  let f = DensePolynomial{coeffs: domain.ifft(&a)};
+  let g = DensePolynomial{coeffs: domain.ifft(&b)};
+  let h = DensePolynomial{coeffs: domain.ifft(&c)};
+  let fx : G1Affine = G1Projective::msm(&srs.0[..N], &f.coeffs).unwrap().into();
+  let gx : G1Affine = G1Projective::msm(&srs.0[..N], &g.coeffs).unwrap().into();
+  let hx : G1Affine = G1Projective::msm(&srs.0[..N], &h.coeffs).unwrap().into();
+  let a = Data{raw: a, poly: f, g1: fx};
+  let b = Data{raw: b, poly: g, g1: gx};
+  let c = Data{raw: c, poly: h, g1: hx};
+  let inputs : Vec<&Data> = vec![&a, &b];
+  let proof = MulBasicBlock::prove(srs,(&(setup.0),&(setup.1)),&inputs,&c,&mut rng);
+  let a = DataEnc{len: a.raw.len(), g1: a.g1};
+  let b = DataEnc{len: b.raw.len(), g1: b.g1};
+  let c = DataEnc{len: c.raw.len(), g1: c.g1};
+  let inputs : Vec<&DataEnc> = vec![&a, &b];
+  MulBasicBlock::verify(srs,&inputs,&c,(&(proof.0),&(proof.1)),&mut rng);
 }
