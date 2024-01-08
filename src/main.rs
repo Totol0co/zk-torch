@@ -6,34 +6,34 @@ use ark_std::{ops::Mul, ops::Sub, UniformRand};
 use std::time::Instant;
 use rand::Rng;
 
-//TODO: Change references
+
 trait BasicBlock{
-  fn setup(srs: (&Vec<G1Affine>,&Vec<G2Affine>),
-           model: Vec<Fr>) ->
+  fn setup(srs: (&[G1Affine],&[G2Affine]),
+           model: &[Fr]) ->
           (Vec<G1Affine>,Vec<G2Affine>);
-  fn prove<R: Rng>(srs: (&Vec<G1Affine>,&Vec<G2Affine>),
-                   setup: (Vec<G1Affine>,Vec<G2Affine>),
-                   inputs: Vec<&Vec<Fr>>,
+  fn prove<R: Rng>(srs: (&[G1Affine],&[G2Affine]),
+                   setup: (&[G1Affine],&[G2Affine]),
+                   inputs: &[&[Fr]],
                    rng: &mut R) ->
                   ((Vec<G1Affine>,Vec<G2Affine>), Vec<Fr>);
-  fn verify<R: Rng>(srs: (&Vec<G1Affine>,&Vec<G2Affine>),
-                    inputs: Vec<G1Affine>,
-                    proof: (Vec<G1Affine>,Vec<G2Affine>),
+  fn verify<R: Rng>(srs: (&[G1Affine],&[G2Affine]),
+                    inputs: &[G1Affine],
+                    proof: (&[G1Affine],&[G2Affine]),
                     output: G1Affine,
                     rng: &mut R);
 }
 
-struct MulBasicBlock();
+struct MulBasicBlock;
 impl BasicBlock for MulBasicBlock{
-  fn setup(srs: (&Vec<G1Affine>,&Vec<G2Affine>),
-           model: Vec<Fr>) ->
+  fn setup(_: (&[G1Affine],&[G2Affine]),
+           _: &[Fr]) ->
           (Vec<G1Affine>,Vec<G2Affine>){
     return (Vec::new(), Vec::new());
   }
-  fn prove<R: Rng>(srs: (&Vec<G1Affine>,&Vec<G2Affine>),
-                   setup: (Vec<G1Affine>,Vec<G2Affine>),
-                   inputs: Vec<&Vec<Fr>>,
-                   rng: &mut R) ->
+  fn prove<R: Rng>(srs: (&[G1Affine],&[G2Affine]),
+                   _: (&[G1Affine],&[G2Affine]),
+                   inputs: &[&[Fr]],
+                   _: &mut R) ->
                   ((Vec<G1Affine>,Vec<G2Affine>), Vec<Fr>){
     let N = 1<<3; //TODO: fix hardcode
     let domain  = GeneralEvaluationDomain::<Fr>::new(N).unwrap();
@@ -49,11 +49,11 @@ impl BasicBlock for MulBasicBlock{
     let tx = G1Projective::msm(&srs.0[..N-1], &t.coeffs).unwrap().into();
     return ((vec![tx],vec![gx2]),r);
   }
-  fn verify<R: Rng>(srs: (&Vec<G1Affine>,&Vec<G2Affine>),
-                    inputs: Vec<G1Affine>,
-                    proof: (Vec<G1Affine>,Vec<G2Affine>),
+  fn verify<R: Rng>(srs: (&[G1Affine],&[G2Affine]),
+                    inputs: &[G1Affine],
+                    proof: (&[G1Affine],&[G2Affine]),
                     output: G1Affine,
-                    rng: &mut R){
+                    _: &mut R){
     let N = 1<<3; //TODO: fix hardcode
     // Verify f(x)*g(x)-h(x)=z(x)t(x)
     let lhs = Bls12_381::pairing(inputs[0],proof.1[0]) - Bls12_381::pairing(output,srs.1[0]);
@@ -72,7 +72,7 @@ fn main() {
   let mut xp = x;
   const N:usize = 1<<3;
   let domain  = GeneralEvaluationDomain::<Fr>::new(N).unwrap();
-  let mut srs = (vec![G1Affine::generator() ; N], vec![G2Affine::generator() ; N+1]);
+  let mut srs = ([G1Affine::generator() ; N], [G2Affine::generator() ; N+1]);
   for i in 1..N{
     srs.0[i]=(srs.0[i]*xp).into();
     xp*=x;
@@ -82,17 +82,19 @@ fn main() {
     srs.1[i]=(srs.1[i]*xp).into();
     xp*=x;
   }
-  let srs=(&srs.0,&srs.1);
+  let srs: (&[G1Affine],&[G2Affine]) = (&(srs.0),&(srs.1));
   let mut a = Vec::new();
   let mut b = Vec::new();
   for _ in 0..N{
     a.push(Fr::rand(&mut rng));
     b.push(Fr::rand(&mut rng));
   }
-  let setup = MulBasicBlock::setup(srs,Vec::new());
-  let (proof,output) = MulBasicBlock::prove(srs,setup,vec![&a,&b],&mut rng);
-  let fx = G1Projective::msm(&srs.0[..N], &domain.ifft(&a)).unwrap().into();
-  let gx = G1Projective::msm(&srs.0[..N], &domain.ifft(&b)).unwrap().into();
-  let hx = G1Projective::msm(&srs.0[..N], &domain.ifft(&output)).unwrap().into();
-  MulBasicBlock::verify(srs,vec![fx,gx],proof,hx,&mut rng);
+  let inputs: Vec<&[Fr]> = vec![&a, &b];
+  let setup = MulBasicBlock::setup(srs,& Vec::new());
+  let (proof,output) = MulBasicBlock::prove(srs,(&(setup.0),&(setup.1)),&inputs,&mut rng);
+  let fx : G1Affine = G1Projective::msm(&srs.0[..N], &domain.ifft(&a)).unwrap().into();
+  let gx : G1Affine = G1Projective::msm(&srs.0[..N], &domain.ifft(&b)).unwrap().into();
+  let hx : G1Affine = G1Projective::msm(&srs.0[..N], &domain.ifft(&output)).unwrap().into();
+  let inputs: Vec<G1Affine> = vec![fx, gx];
+  MulBasicBlock::verify(srs,&inputs,(&(proof.0),&(proof.1)),hx,&mut rng);
 }
