@@ -24,14 +24,14 @@ impl BasicBlock for AddBasicBlock{
                    _: &[&Data],
                    _: &Data,
                    _: &mut R) ->
-                  (Vec<G1Affine>,Vec<G2Affine>){
-    return (Vec::new(), Vec::new());
+                  (Vec<G1Affine>,Vec<G2Affine>,Vec<Fr>){
+    return (Vec::new(), Vec::new(), Vec::new());
   }
   fn verify<R: Rng>(_: (&[G1Affine],&[G2Affine]),
                     _: &DataEnc,
                     inputs: &[&DataEnc],
                     output: &DataEnc,
-                    _: (&[G1Affine],&[G2Affine]),
+                    _: (&[G1Affine],&[G2Affine],&[Fr]),
                     _: &mut R){
     // Verify f(x)+g(x)=h(x)
     let lhs = inputs[0].g1+inputs[1].g1;

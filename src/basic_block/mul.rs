@@ -27,19 +27,19 @@ impl BasicBlock for MulBasicBlock{
                    inputs: &[&Data],
                    output: &Data,
                    _: &mut R) ->
-                  (Vec<G1Affine>,Vec<G2Affine>){
+                  (Vec<G1Affine>,Vec<G2Affine>,Vec<Fr>){
     let N = inputs[0].raw.len();
     let domain  = GeneralEvaluationDomain::<Fr>::new(N).unwrap();
     let gx2 = G2Projective::msm(&srs.1[..N], &inputs[1].poly.coeffs).unwrap().into();
     let t = inputs[0].poly.mul(&inputs[1].poly).sub(&output.poly).divide_by_vanishing_poly(domain).unwrap().0;
     let tx = G1Projective::msm(&srs.0[..N-1], &t.coeffs).unwrap().into();
-    return (vec![tx],vec![gx2]);
+    return (vec![tx],vec![gx2],Vec::new());
   }
   fn verify<R: Rng>(srs: (&[G1Affine],&[G2Affine]),
                     _: &DataEnc,
                     inputs: &[&DataEnc],
                     output: &DataEnc,
-                    proof: (&[G1Affine],&[G2Affine]),
+                    proof: (&[G1Affine],&[G2Affine],&[Fr]),
                     _: &mut R){
     // Verify f(x)*g(x)-h(x)=z(x)t(x)
     let lhs = Bls12_381::pairing(inputs[0].g1,proof.1[0]) - Bls12_381::pairing(output.g1,srs.1[0]);

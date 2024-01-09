@@ -1,8 +1,10 @@
 use ark_poly::univariate::DensePolynomial;
 use ark_bls12_381::{Fr, G1Affine, G2Affine};
 use rand::Rng;
+pub use cq::CQBasicBlock;
 pub use mul::MulBasicBlock;
 pub use add::AddBasicBlock;
+pub mod cq;
 pub mod mul;
 pub mod add;
 
@@ -28,12 +30,12 @@ pub trait BasicBlock{
                    inputs: &[&Data],
                    output: &Data,
                    rng: &mut R) ->
-                  (Vec<G1Affine>,Vec<G2Affine>);
+                  (Vec<G1Affine>,Vec<G2Affine>,Vec<Fr>);
   fn verify<R: Rng>(srs: (&[G1Affine],&[G2Affine]),
                     model: &DataEnc,
                     inputs: &[&DataEnc],
                     output: &DataEnc,
-                    proof: (&[G1Affine],&[G2Affine]),
+                    proof: (&[G1Affine],&[G2Affine],&[Fr]),
                     rng: &mut R);
 }
 
