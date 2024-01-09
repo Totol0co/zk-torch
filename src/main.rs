@@ -6,6 +6,8 @@ use ark_std::{UniformRand};
 use std::time::Instant;
 use basic_block::*;
 mod basic_block;
+mod util;
+mod g_fft;
 
 fn test<BB: BasicBlock>(){
   let mut rng = ark_std::test_rng();

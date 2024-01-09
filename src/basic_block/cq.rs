@@ -7,8 +7,6 @@ use ark_bls12_381::{Fr, G1Projective, G2Projective, G1Affine, G2Affine, Bls12_38
 use ark_std::{Zero, One, ops::{Mul,Div,Sub}, UniformRand};
 use std::collections::HashMap;
 use std::time::Instant;
-mod util;
-mod g_fft;
 const N : usize = 1<<7;
 const n : usize = 1<<5;
 
