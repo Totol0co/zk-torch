@@ -9,7 +9,6 @@ use std::time::Instant;
 use basic_block::*;
 mod basic_block;
 mod util;
-mod g_fft;
 
 fn test1<BB: BasicBlock>(){
   let mut rng = StdRng::from_entropy();
@@ -103,5 +102,7 @@ fn test2<BB: BasicBlock>(){
   BB::verify(srs,&model,&inputs,&o,(&(proof.0),&(proof.1),&(proof.2)),&mut rng2);
 }
 fn main() {
+  test1::<AddBasicBlock>();
+  test1::<MulBasicBlock>();
   test2::<CQBasicBlock>();
 }

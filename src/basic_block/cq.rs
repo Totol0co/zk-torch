@@ -8,7 +8,7 @@ use ark_std::{Zero, One, ops::{Mul,Div,Sub}, UniformRand};
 use std::collections::HashMap;
 use rand::Rng;
 use super::{BasicBlock,Data,DataEnc};
-use crate::{util,g_fft};
+use crate::{util};
 
 pub struct CQBasicBlock;
 impl BasicBlock for CQBasicBlock{
@@ -30,13 +30,13 @@ impl BasicBlock for CQBasicBlock{
     let mut temp2 = srs_p.clone();
     temp2.reverse();
     let mut Q_i_x_1 = util::toeplitz_mul(domain_2N, &temp, &temp2);
-    g_fft::fft_in_place(domain_N, &mut Q_i_x_1);
+    util::fft_in_place(domain_N, &mut Q_i_x_1);
     let temp = Fr::from(N as u32).inverse().unwrap();
     let temp2 = domain_N.group_gen_inv().pow(&[(N-1) as u64]);
     for i in 0..N{
       Q_i_x_1[i] *= temp * temp2.pow(&[i as u64]);
     }
-    let L_i_x_1 = g_fft::ifft(domain_N, &srs_p[..N]);
+    let L_i_x_1 = util::ifft(domain_N, &srs_p[..N]);
     let mut L_i_0_x_1 = L_i_x_1.clone();
     let temp = srs.0[N-1] * Fr::from(N as u64).inverse().unwrap();
     for i in 0..N{
