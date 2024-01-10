@@ -1,5 +1,7 @@
+use ark_ec::VariableBaseMSM;
 use ark_poly::univariate::DensePolynomial;
-use ark_bls12_381::{Fr, G1Affine, G2Affine};
+use ark_poly::{GeneralEvaluationDomain, EvaluationDomain};
+use ark_bls12_381::{Fr, G1Affine, G1Projective, G2Affine};
 use rand::Rng;
 pub use cq::CQBasicBlock;
 pub use mul::MulBasicBlock;
@@ -13,9 +15,23 @@ pub struct Data{
   pub poly: DensePolynomial<Fr>,
   pub g1: G1Affine
 }
+impl Data{
+  pub fn new(srs:(&[G1Affine],&[G2Affine]), raw:&[Fr]) -> Data{
+    let N = (*raw).len();
+    let domain  = GeneralEvaluationDomain::<Fr>::new(N).unwrap();
+    let f = DensePolynomial{coeffs: domain.ifft(raw)};
+    let fx : G1Affine = G1Projective::msm_unchecked(&srs.0[..N], &f.coeffs).into();
+    return Data{raw: raw.to_vec(), poly: f, g1: fx};
+  }
+}
 pub struct DataEnc{
   pub len : usize,
   pub g1: G1Affine
+}
+impl DataEnc{
+  pub fn new(data:&Data) -> DataEnc{
+    return DataEnc{len: data.raw.len(), g1: data.g1};
+  }
 }
 pub trait BasicBlock{
   fn run(model: &[Fr],
