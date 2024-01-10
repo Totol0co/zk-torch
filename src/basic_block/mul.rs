@@ -7,8 +7,8 @@ use super::{BasicBlock,Data,DataEnc};
 
 pub struct MulBasicBlock;
 impl BasicBlock for MulBasicBlock{
-  fn run(_: &[Fr],
-         inputs: &[&[Fr]]) ->
+  fn run(_model: &Vec<Fr>,
+         inputs: &Vec<Vec<Fr>>) ->
          Vec<Fr>{
     let mut r = Vec::new();
     for i in 0..inputs[0].len(){
@@ -16,17 +16,17 @@ impl BasicBlock for MulBasicBlock{
     }
     return r;
   }
-  fn setup(_: (&[G1Affine],&[G2Affine]),
-           _: &mut Data) ->
+  fn setup(_srs: (&Vec<G1Affine>,&Vec<G2Affine>),
+           _model: &mut Data) ->
           (Vec<G1Affine>,Vec<G2Affine>){
     return (Vec::new(), Vec::new());
   }
-  fn prove<R: Rng>(srs: (&[G1Affine],&[G2Affine]),
-                   _: (&[G1Affine],&[G2Affine]),
-                   _: &Data,
-                   inputs: &[&Data],
+  fn prove<R: Rng>(srs: (&Vec<G1Affine>,&Vec<G2Affine>),
+                   _setup: (&Vec<G1Affine>,&Vec<G2Affine>),
+                   _model: &Data,
+                   inputs: &Vec<Data>,
                    output: &Data,
-                   _: &mut R) ->
+                   _rng: &mut R) ->
                   (Vec<G1Affine>,Vec<G2Affine>,Vec<Fr>){
     let N = inputs[0].raw.len();
     let domain  = GeneralEvaluationDomain::<Fr>::new(N).unwrap();
@@ -35,12 +35,12 @@ impl BasicBlock for MulBasicBlock{
     let tx = G1Projective::msm(&srs.0[..N-1], &t.coeffs).unwrap().into();
     return (vec![tx],vec![gx2],Vec::new());
   }
-  fn verify<R: Rng>(srs: (&[G1Affine],&[G2Affine]),
-                    _: &DataEnc,
-                    inputs: &[&DataEnc],
+  fn verify<R: Rng>(srs: (&Vec<G1Affine>,&Vec<G2Affine>),
+                    _model: &DataEnc,
+                    inputs: &Vec<DataEnc>,
                     output: &DataEnc,
-                    proof: (&[G1Affine],&[G2Affine],&[Fr]),
-                    _: &mut R){
+                    proof: (&Vec<G1Affine>,&Vec<G2Affine>,&Vec<Fr>),
+                    _rng: &mut R){
     // Verify f(x)*g(x)-h(x)=z(x)t(x)
     let lhs = Bls12_381::pairing(inputs[0].g1,proof.1[0]) - Bls12_381::pairing(output.g1,srs.1[0]);
     let rhs = Bls12_381::pairing(proof.0[0],srs.1[inputs[0].len]-srs.1[0]);

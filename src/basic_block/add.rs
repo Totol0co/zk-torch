@@ -4,8 +4,8 @@ use super::{BasicBlock,Data,DataEnc};
 
 pub struct AddBasicBlock;
 impl BasicBlock for AddBasicBlock{
-  fn run(_: &[Fr],
-         inputs: &[&[Fr]]) ->
+  fn run(_model: &Vec<Fr>,
+         inputs: &Vec<Vec<Fr>>) ->
          Vec<Fr>{
     let mut r = Vec::new();
     for i in 0..inputs[0].len(){
@@ -13,26 +13,26 @@ impl BasicBlock for AddBasicBlock{
     }
     return r;
   }
-  fn setup(_: (&[G1Affine],&[G2Affine]),
-           _: &mut Data) ->
+  fn setup(_srs: (&Vec<G1Affine>,&Vec<G2Affine>),
+           _model: &mut Data) ->
           (Vec<G1Affine>,Vec<G2Affine>){
     return (Vec::new(), Vec::new());
   }
-  fn prove<R: Rng>(_: (&[G1Affine],&[G2Affine]),
-                   _: (&[G1Affine],&[G2Affine]),
-                   _: &Data,
-                   _: &[&Data],
-                   _: &Data,
-                   _: &mut R) ->
+  fn prove<R: Rng>(_srs: (&Vec<G1Affine>,&Vec<G2Affine>),
+                   _setup: (&Vec<G1Affine>,&Vec<G2Affine>),
+                   _model: &Data,
+                   _inputs: &Vec<Data>,
+                   _output: &Data,
+                   _rng: &mut R) ->
                   (Vec<G1Affine>,Vec<G2Affine>,Vec<Fr>){
     return (Vec::new(), Vec::new(), Vec::new());
   }
-  fn verify<R: Rng>(_: (&[G1Affine],&[G2Affine]),
-                    _: &DataEnc,
-                    inputs: &[&DataEnc],
+  fn verify<R: Rng>(_srs: (&Vec<G1Affine>,&Vec<G2Affine>),
+                    _model: &DataEnc,
+                    inputs: &Vec<DataEnc>,
                     output: &DataEnc,
-                    _: (&[G1Affine],&[G2Affine],&[Fr]),
-                    _: &mut R){
+                    _proof: (&Vec<G1Affine>,&Vec<G2Affine>,&Vec<Fr>),
+                    _rng: &mut R){
     // Verify f(x)+g(x)=h(x)
     let lhs = inputs[0].g1+inputs[1].g1;
     let rhs = output.g1;

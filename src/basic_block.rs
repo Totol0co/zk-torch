@@ -16,7 +16,7 @@ pub struct Data{
   pub g1: G1Affine
 }
 impl Data{
-  pub fn new(srs:(&[G1Affine],&[G2Affine]), raw:&[Fr]) -> Data{
+  pub fn new(srs:(&Vec<G1Affine>,&Vec<G2Affine>), raw:&Vec<Fr>) -> Data{
     let N = (*raw).len();
     let domain  = GeneralEvaluationDomain::<Fr>::new(N).unwrap();
     let f = DensePolynomial{coeffs: domain.ifft(raw)};
@@ -34,24 +34,24 @@ impl DataEnc{
   }
 }
 pub trait BasicBlock{
-  fn run(model: &[Fr],
-         inputs: &[&[Fr]]) ->
+  fn run(model: &Vec<Fr>,
+         inputs: &Vec<Vec<Fr>>) ->
          Vec<Fr>;
-  fn setup(srs: (&[G1Affine],&[G2Affine]),
+  fn setup(srs: (&Vec<G1Affine>,&Vec<G2Affine>),
            model: &mut Data) ->
           (Vec<G1Affine>,Vec<G2Affine>);
-  fn prove<R: Rng>(srs: (&[G1Affine],&[G2Affine]),
-                   setup: (&[G1Affine],&[G2Affine]),
+  fn prove<R: Rng>(srs: (&Vec<G1Affine>,&Vec<G2Affine>),
+                   setup: (&Vec<G1Affine>,&Vec<G2Affine>),
                    model: &Data,
-                   inputs: &[&Data],
+                   inputs: &Vec<Data>,
                    output: &Data,
                    rng: &mut R) ->
                   (Vec<G1Affine>,Vec<G2Affine>,Vec<Fr>);
-  fn verify<R: Rng>(srs: (&[G1Affine],&[G2Affine]),
+  fn verify<R: Rng>(srs: (&Vec<G1Affine>,&Vec<G2Affine>),
                     model: &DataEnc,
-                    inputs: &[&DataEnc],
+                    inputs: &Vec<DataEnc>,
                     output: &DataEnc,
-                    proof: (&[G1Affine],&[G2Affine],&[Fr]),
+                    proof: (&Vec<G1Affine>,&Vec<G2Affine>,&Vec<Fr>),
                     rng: &mut R);
 }
 

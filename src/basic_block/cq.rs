@@ -12,12 +12,12 @@ use crate::{util};
 
 pub struct CQBasicBlock;
 impl BasicBlock for CQBasicBlock{
-  fn run(_: &[Fr],
-         _: &[&[Fr]]) ->
+  fn run(_model: &Vec<Fr>,
+         _inputs: &Vec<Vec<Fr>>) ->
          Vec<Fr>{
     return Vec::new();
   }
-  fn setup(srs: (&[G1Affine],&[G2Affine]),
+  fn setup(srs: (&Vec<G1Affine>,&Vec<G2Affine>),
            model: &mut Data) ->
           (Vec<G1Affine>,Vec<G2Affine>){
     let N = model.raw.len();
@@ -51,11 +51,11 @@ impl BasicBlock for CQBasicBlock{
     setup.extend(L_i_0_x_1);
     return (setup,vec![T_x_2]);
   }
-  fn prove<R: Rng>(srs: (&[G1Affine],&[G2Affine]),
-                   setup: (&[G1Affine],&[G2Affine]),
+  fn prove<R: Rng>(srs: (&Vec<G1Affine>,&Vec<G2Affine>),
+                   setup: (&Vec<G1Affine>,&Vec<G2Affine>),
                    model: &Data,
-                   inputs: &[&Data],
-                   _: &Data,
+                   inputs: &Vec<Data>,
+                   _output: &Data,
                    rng: &mut R) ->
                   (Vec<G1Affine>,Vec<G2Affine>,Vec<Fr>){
     let N = model.raw.len();
@@ -122,11 +122,11 @@ impl BasicBlock for CQBasicBlock{
     let A_0_x = G1Projective::msm(&temp, &temp2).unwrap().into();//11
     return (vec![m_x_1,A_x_1,Q_A_x_1,B_0_x_1,Q_B_x_1,P_x_1,pi_gamma,A_0_x],vec![setup.1[0]],vec![B_0_gamma,f_gamma,A_0]);
   }
-  fn verify<R: Rng>(srs: (&[G1Affine],&[G2Affine]),
+  fn verify<R: Rng>(srs: (&Vec<G1Affine>,&Vec<G2Affine>),
                     model: &DataEnc,
-                    inputs: &[&DataEnc],
-                    _: &DataEnc,
-                    proof: (&[G1Affine],&[G2Affine],&[Fr]),
+                    inputs: &Vec<DataEnc>,
+                    _output: &DataEnc,
+                    proof: (&Vec<G1Affine>,&Vec<G2Affine>,&Vec<Fr>),
                     rng: &mut R){
     let N = model.len;
     let n = inputs[0].len;
