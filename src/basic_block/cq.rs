@@ -1,14 +1,14 @@
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
 use ark_ec::{VariableBaseMSM, AffineRepr, pairing::Pairing};
-use ark_ff::{Field};
+use ark_ff::Field;
 use ark_poly::{evaluations::univariate::Evaluations, GeneralEvaluationDomain, EvaluationDomain,univariate::DensePolynomial, Polynomial};
 use ark_bls12_381::{Fr, G1Projective, G2Projective, G1Affine, G2Affine, Bls12_381};
 use ark_std::{Zero, One, ops::{Mul,Div,Sub}, UniformRand};
 use std::collections::HashMap;
 use rand::Rng;
 use super::{BasicBlock,Data,DataEnc};
-use crate::{util};
+use crate::util;
 
 pub struct CQBasicBlock;
 impl BasicBlock for CQBasicBlock{
@@ -61,6 +61,7 @@ impl BasicBlock for CQBasicBlock{
     let N = model.raw.len();
     let n = inputs[0].raw.len();
     let domain_n  = GeneralEvaluationDomain::<Fr>::new(n).unwrap();
+
     // gen(N, t):
     let Q_i_x_1 = &setup.0[..N];
     let L_i_x_1 = &setup.0[N..2*N];
@@ -105,19 +106,10 @@ impl BasicBlock for CQBasicBlock{
     let b_gamma = B_0_gamma * gamma + b_0;
     let Q_b_gamma = (b_gamma * (f_gamma + beta) - Fr::one()) * Z_H_gamma.inverse().unwrap();
     let v = B_0_gamma + eta * f_gamma + eta * eta * Q_b_gamma;
-
     let mut num = B_0 + inputs[0].poly.mul(eta)+ Q_B.mul(eta * eta);
     num -= &DensePolynomial{coeffs:vec![v]};
     let h = num.div(&DensePolynomial{coeffs:vec![-gamma,Fr::one()]});
     let pi_gamma = G1Projective::msm_unchecked(&srs.0[..n-1],&h).into();
-
-    //TESTING
-    let c = B_0_x_1 + inputs[0].g1 * eta + Q_B_x_1 * eta * eta;
-    let lhs = Bls12_381::pairing(c - G1Affine::generator() * v + pi_gamma * gamma, srs.1[0]);
-    let rhs = Bls12_381::pairing(pi_gamma, srs.1[1]);
-    assert!(lhs==rhs);
-    //TESTING
-
     let (temp, temp2) : (Vec<G1Affine>,Vec<Fr>)=A_i.iter().map(|(i,y)| (L_i_0_x_1[*i], *y)).unzip();
     let A_0_x = G1Projective::msm(&temp, &temp2).unwrap().into();//11
     return (vec![m_x_1,A_x_1,Q_A_x_1,B_0_x_1,Q_B_x_1,P_x_1,pi_gamma,A_0_x],vec![setup.1[0]],vec![B_0_gamma,f_gamma,A_0]);
@@ -131,9 +123,9 @@ impl BasicBlock for CQBasicBlock{
     let N = model.len;
     let n = inputs[0].len;
     let domain_n  = GeneralEvaluationDomain::<Fr>::new(n).unwrap();
-    let [m_x_1,A_x_1,Q_A_x_1,B_0_x_1,Q_B_x_1,P_x_1,pi_gamma,A_0_x] = proof.0.to_vec()[..] else{panic!("wrong proof format")};
-    let [T_x_2] = proof.1.to_vec()[..] else{panic!("wrong proof format")};
-    let [B_0_gamma,f_gamma,A_0] = proof.2.to_vec()[..] else{panic!("wrong proof format")};
+    let [m_x_1,A_x_1,Q_A_x_1,B_0_x_1,Q_B_x_1,P_x_1,pi_gamma,A_0_x] = proof.0[..] else{panic!("Wrong proof format")};
+    let [T_x_2] = proof.1[..] else{panic!("Wrong proof format")};
+    let [B_0_gamma,f_gamma,A_0] = proof.2[..] else{panic!("Wrong proof format")};
 
     // Round 2
     let beta = Fr::rand(rng);
@@ -149,12 +141,12 @@ impl BasicBlock for CQBasicBlock{
     // Round 3
     let gamma = Fr::rand(rng);
     let eta = Fr::rand(rng);
-    let b_0 = Fr::from(N as u32) * A_0 * Fr::from(n as u32).inverse().unwrap(); // V computes
+    let b_0 = Fr::from(N as u32) * A_0 * Fr::from(n as u32).inverse().unwrap();
     let Z_H_gamma = domain_n.evaluate_vanishing_polynomial(gamma);
     let b_gamma = B_0_gamma * gamma + b_0;
     let Q_b_gamma = (b_gamma * (f_gamma + beta) - Fr::one()) * Z_H_gamma.inverse().unwrap();
-    let v = B_0_gamma + eta * f_gamma + eta * eta * Q_b_gamma; // P and V compute
-    let c = B_0_x_1 + inputs[0].g1 * eta + Q_B_x_1 * eta * eta; // V computes
+    let v = B_0_gamma + eta * f_gamma + eta * eta * Q_b_gamma;
+    let c = B_0_x_1 + inputs[0].g1 * eta + Q_B_x_1 * eta * eta;
     let lhs = Bls12_381::pairing(c - G1Affine::generator() * v + pi_gamma * gamma, srs.1[0]);
     let rhs = Bls12_381::pairing(pi_gamma, srs.1[1]);
     assert!(lhs==rhs);
