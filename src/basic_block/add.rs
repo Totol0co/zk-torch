@@ -14,7 +14,7 @@ impl BasicBlock for AddBasicBlock{
     return r;
   }
   fn setup(_srs: (&Vec<G1Affine>,&Vec<G2Affine>),
-           _model: &mut Data) ->
+           _model: &Data) ->
           (Vec<G1Affine>,Vec<G2Affine>){
     return (Vec::new(), Vec::new());
   }

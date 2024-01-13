@@ -27,8 +27,8 @@ fn test_basic_block<BB: BasicBlock>(model: &Vec<Fr>, inputs: &Vec<Vec<Fr>>){
   let srs = (&(srs.0),&(srs.1));
   // Proof:
   let output = BB::run(model,inputs);
-  let mut model = Data::new(srs, model);
-  let setup = BB::setup(srs,&mut model);
+  let model = Data::new(srs, model);
+  let setup = BB::setup(srs,&model);
   let inputs = inputs.iter().map(|x| Data::new(srs,x)).collect();
   let output = Data::new(srs,&output);
   let mut rng2 = rng.clone();
@@ -40,7 +40,7 @@ fn test_basic_block<BB: BasicBlock>(model: &Vec<Fr>, inputs: &Vec<Vec<Fr>>){
 }
 fn main() {
   let mut rng = StdRng::from_entropy();
-  const N:usize = 1<<3;
+  const N:usize = 1<<4;
   const n:usize = 1<<2;
   let mut a = Vec::new();
   let mut b = Vec::new();
@@ -51,4 +51,5 @@ fn main() {
   test_basic_block::<AddBasicBlock>(&Vec::new(),&vec![a.clone(),b.clone()]);
   test_basic_block::<MulBasicBlock>(&Vec::new(),&vec![a.clone(),b.clone()]);
   test_basic_block::<CQBasicBlock>(&a,&vec![a[..n].to_vec()]);
+  test_basic_block::<CQLinBasicBlock>(&a,&vec![b[..n].to_vec()]);
 }

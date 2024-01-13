@@ -4,9 +4,11 @@ use ark_poly::{GeneralEvaluationDomain, EvaluationDomain};
 use ark_bls12_381::{Fr, G1Affine, G1Projective, G2Affine};
 use rand::Rng;
 pub use cq::CQBasicBlock;
+pub use cqlin::CQLinBasicBlock;
 pub use mul::MulBasicBlock;
 pub use add::AddBasicBlock;
 pub mod cq;
+pub mod cqlin;
 pub mod mul;
 pub mod add;
 
@@ -38,7 +40,7 @@ pub trait BasicBlock{
          inputs: &Vec<Vec<Fr>>) ->
          Vec<Fr>;
   fn setup(srs: (&Vec<G1Affine>,&Vec<G2Affine>),
-           model: &mut Data) ->
+           model: &Data) ->
           (Vec<G1Affine>,Vec<G2Affine>);
   fn prove<R: Rng>(srs: (&Vec<G1Affine>,&Vec<G2Affine>),
                    setup: (&Vec<G1Affine>,&Vec<G2Affine>),

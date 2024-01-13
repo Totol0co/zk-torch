@@ -18,7 +18,7 @@ impl BasicBlock for CQBasicBlock{
     return Vec::new();
   }
   fn setup(srs: (&Vec<G1Affine>,&Vec<G2Affine>),
-           model: &mut Data) ->
+           model: &Data) ->
           (Vec<G1Affine>,Vec<G2Affine>){
     let N = model.raw.len();
     let domain_2N  = GeneralEvaluationDomain::<Fr>::new(2*N).unwrap();

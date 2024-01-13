@@ -1,7 +1,8 @@
 use ark_poly::{GeneralEvaluationDomain, EvaluationDomain};
 use ark_ff::Field;
-use ark_bls12_381::{Fr, G1Projective};
+use ark_bls12_381::Fr;
 use ark_std::{Zero, One};
+use ark_ec::ScalarMul;
 
 fn bitreverse(mut n: u32, l: u64) -> u32 {
   let mut r = 0;
@@ -11,7 +12,7 @@ fn bitreverse(mut n: u32, l: u64) -> u32 {
   }
   r
 }
-pub fn fft_helper(a: &mut [G1Projective], omega: Fr, log_size: u64) {
+pub fn fft_helper<G:ScalarMul+std::ops::MulAssign<Fr>>(a: &mut [G], omega: Fr, log_size: u64) {
   let n = a.len();
   let mut m = 1;
   for k in 0..n {
@@ -38,26 +39,26 @@ pub fn fft_helper(a: &mut [G1Projective], omega: Fr, log_size: u64) {
     m *= 2;
   }
 }
-pub fn fft(domain: GeneralEvaluationDomain<Fr>, a: &[G1Projective]) -> Vec<G1Projective>{
+pub fn fft<G:ScalarMul+std::ops::MulAssign<Fr>>(domain: GeneralEvaluationDomain<Fr>, a: &[G]) -> Vec<G>{
   let mut r = a.to_vec();
   fft_helper(&mut r, domain.group_gen(), domain.log_size_of_group());
   r
 }
-pub fn ifft(domain: GeneralEvaluationDomain<Fr>, a: &[G1Projective]) -> Vec<G1Projective>{
+pub fn ifft<G:ScalarMul+std::ops::MulAssign<Fr>>(domain: GeneralEvaluationDomain<Fr>, a: &[G]) -> Vec<G>{
   let mut r = a.to_vec();
   fft_helper(&mut r, domain.group_gen_inv(), domain.log_size_of_group());
   r.iter_mut().for_each(|x| *x *= domain.size_inv());
   r
 }
-pub fn fft_in_place(domain: GeneralEvaluationDomain<Fr>, a: &mut [G1Projective]){
+pub fn fft_in_place<G:ScalarMul+std::ops::MulAssign<Fr>>(domain: GeneralEvaluationDomain<Fr>, a: &mut [G]){
   fft_helper(a, domain.group_gen(), domain.log_size_of_group());
 }
-pub fn ifft_in_place(domain: GeneralEvaluationDomain<Fr>, a: &mut [G1Projective]){
+pub fn ifft_in_place<G:ScalarMul+std::ops::MulAssign<Fr>>(domain: GeneralEvaluationDomain<Fr>, a: &mut [G]){
   fft_helper(a, domain.group_gen_inv(), domain.log_size_of_group());
   a.iter_mut().for_each(|x| *x *= domain.size_inv());
 }
 
-pub fn circulant_mul(domain: GeneralEvaluationDomain<Fr>, c: &[Fr], a: &[G1Projective]) -> Vec<G1Projective>{
+pub fn circulant_mul<G:ScalarMul+std::ops::MulAssign<Fr>>(domain: GeneralEvaluationDomain<Fr>, c: &[Fr], a: &[G]) -> Vec<G>{
   let lambda = domain.fft(c);
   let mut r = fft(domain,a);
   for i in 0..r.len(){
@@ -67,15 +68,15 @@ pub fn circulant_mul(domain: GeneralEvaluationDomain<Fr>, c: &[Fr], a: &[G1Proje
   r
 }
 
-pub fn toeplitz_mul(domain: GeneralEvaluationDomain<Fr>, m: &[Fr], a: &[G1Projective]) -> Vec<G1Projective>{
+pub fn toeplitz_mul<G:ScalarMul+std::ops::MulAssign<Fr>>(domain: GeneralEvaluationDomain<Fr>, m: &[Fr], a: &[G]) -> Vec<G>{
   let n = (m.len()+1)/2;
   let mut temp = m.to_vec();
   let mut m2 = temp.split_off(n-1);
   m2.push(Fr::zero());
   m2.append(&mut temp);
   let mut temp2 = a.to_vec();
-  temp2.resize(2*n, G1Projective::zero());
+  temp2.resize(2*n, G::zero());
   let mut r = circulant_mul(domain, &m2, &temp2);
-  r.resize(n, G1Projective::zero());
+  r.resize(n, G::zero());
   r
 }
