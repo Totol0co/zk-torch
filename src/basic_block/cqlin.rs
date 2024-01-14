@@ -1,13 +1,10 @@
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
-#![allow(unused_imports)]
-#![allow(unused_variables)]
-use ark_ec::{VariableBaseMSM, AffineRepr, pairing::Pairing};
+use ark_ec::{VariableBaseMSM, pairing::Pairing};
 use ark_ff::Field;
-use ark_poly::{evaluations::univariate::Evaluations, GeneralEvaluationDomain, EvaluationDomain,univariate::DensePolynomial, Polynomial};
+use ark_poly::{GeneralEvaluationDomain, EvaluationDomain, Polynomial};
 use ark_bls12_381::{Fr, G1Projective, G2Projective, G1Affine, G2Affine, Bls12_381};
-use ark_std::{Zero, One, ops::{Mul,Div,Sub}, UniformRand};
-use std::collections::HashMap;
+use ark_std::{Zero, One, UniformRand};
 use rand::Rng;
 use super::{BasicBlock,Data,DataEnc};
 use crate::util;
@@ -21,7 +18,7 @@ impl BasicBlock for CQLinBasicBlock{
     let mut r = vec![Fr::zero() ; n];
     for i in 0..n{
       for j in 0..n{
-        r[i]+=model[i*n+j] * inputs[0][j];
+        r[i]+=model[j*n+i] * inputs[0][j];
       }
     }
     return r;
@@ -30,13 +27,14 @@ impl BasicBlock for CQLinBasicBlock{
            model: &Data) ->
           (Vec<G1Affine>,Vec<G2Affine>){
     let N = model.raw.len();
-    let n : usize= (N as f64).sqrt() as usize;
+    let n: usize = (N as f64).sqrt() as usize;
     let n_inv = Fr::from(n as u64).inverse().unwrap();
-    let domain_2n  = GeneralEvaluationDomain::<Fr>::new(2*n).unwrap();
     let domain_n  = GeneralEvaluationDomain::<Fr>::new(n).unwrap();
-    let srs_p : Vec<G1Projective> = srs.0.iter().map(|x| (*x).into()).collect();
+    let domain_2n  = GeneralEvaluationDomain::<Fr>::new(2*n).unwrap();
+    let srs_p: Vec<G1Projective> = srs.0.iter().map(|x| (*x).into()).collect();
     let L_i_x = util::ifft(domain_n, &srs_p[..n]);
-    let L_i_x_n = util::ifft(domain_n, &(0..n).map(|i| srs_p[n*i]).collect::<Vec<_>>());
+    let mut L_i_x_n: Vec<_> = (0..n).map(|i| srs_p[n*i]).collect();
+    util::ifft_in_place(domain_n, &mut L_i_x_n);//good
 
     let mut temp: Vec<Vec<_>>= (0..n).map(|i|(0..n).map(|j|srs_p[i+n*j]).collect()).collect();
     temp.iter_mut().for_each(|x| util::ifft_in_place(domain_n, x));
@@ -49,12 +47,12 @@ impl BasicBlock for CQLinBasicBlock{
     let mut V = util::ifft(domain_n, &srs_p[N-n..N]);
     V.iter_mut().for_each(|x| *x *= n_inv);
 
-    let mut srs_star: Vec<Vec<_>>= (0..n).map(|i|(0..n).map(|j|srs_p[i+n*j]).collect()).collect();
+    let mut srs_star: Vec<Vec<_>>= (0..n).map(|i|srs_p[n*i..n*i+n].to_vec()).collect();
     srs_star.iter_mut().for_each(|x| util::ifft_in_place(domain_n, x));
-    srs_star = (0..n).map(|i|(0..n).map(|j|srs_star[j][n-1-i]).collect()).collect();
+    srs_star = (0..n).map(|i|(0..n).map(|j|srs_star[n-1-j][i]).collect()).collect();
     srs_star.iter_mut().for_each(|x| x.append(&mut vec![G1Projective::zero(); n]));
     srs_star.iter_mut().for_each(|x| util::fft_in_place(domain_2n, x));
-    
+
     let mut Ls = vec![vec![Fr::zero() ; n] ; n];
     Ls.iter_mut().enumerate().for_each(|(i, x)| x[i]=Fr::one());
     Ls.iter_mut().for_each(|x| domain_n.ifft_in_place(x));
@@ -62,8 +60,9 @@ impl BasicBlock for CQLinBasicBlock{
     let S: Vec<_> = S.iter().map(|x|x.iter().sum::<G1Projective>()).collect();
     let R: Vec<Vec<_>>= (0..n).map(|i|(0..n).map(|j|U[i][j] * model.raw[i*n+j]).collect()).collect();
     let R: Vec<_> = R.iter().map(|x|x.iter().sum::<G1Projective>()).collect();
-    let C: Vec<Vec<Vec<_>>>= (0..n).map(|i|(0..n).map(|coeff|(0..n).map(|j|model.raw[j*n+i]*Ls[j][coeff]).collect()).collect()).collect();
-    let C: Vec<Vec<_>> = C.iter().map(|x|x.iter().map(|y|y.iter().sum::<Fr>()).collect()).collect();
+
+    let mut C: Vec<Vec<_>>= (0..n).map(|i|(0..n).map(|j|model.raw[j*n+i]).collect()).collect();
+    C.iter_mut().for_each(|x| domain_n.ifft_in_place(x));
 
     let mut temp = C;
     temp.iter_mut().for_each(|x| x.append(&mut vec![Fr::zero(); n]));
@@ -73,31 +72,82 @@ impl BasicBlock for CQLinBasicBlock{
     util::ifft_in_place(domain_2n, &mut temp);
     let temp = util::fft(domain_n, &temp[n..]);
     let Q: Vec<_> = (0..n).map(|i|temp[i]*domain_n.element(i)*n_inv).collect();
-    let M_x = (0..n).map(|i|(0..n).map(|j|U2[i][j]*model.raw[i*n+j]).sum::<G2Projective>()).sum::<G2Projective>();
-    
+    let M_x = (0..n).map(|i|(0..n).map(|j|U2[i][j]*model.raw[i*n+j]).sum::<G2Projective>()).sum::<G2Projective>(); //TODO: Change to msm
+
     let R: Vec<G1Affine> = R.iter().map(|x|(*x).into()).collect();
     let mut Q: Vec<G1Affine> = Q.iter().map(|x|(*x).into()).collect();
     let mut S: Vec<G1Affine> = S.iter().map(|x|(*x).into()).collect();
+    let mut L_i_x: Vec<G1Affine> = L_i_x.iter().map(|x|(*x).into()).collect();
+    let mut L_i_x_n: Vec<G1Affine> = L_i_x_n.iter().map(|x|(*x).into()).collect();
     let mut setup = R;
     setup.append(&mut Q);
     setup.append(&mut S);
+    setup.append(&mut L_i_x);
+    setup.append(&mut L_i_x_n);
     return (setup,vec![M_x.into()]);
   }
   fn prove<R: Rng>(srs: (&Vec<G1Affine>,&Vec<G2Affine>),
                    setup: (&Vec<G1Affine>,&Vec<G2Affine>),
-                   model: &Data,
+                   _model: &Data,
                    inputs: &Vec<Data>,
-                   _output: &Data,
+                   output: &Data,
                    rng: &mut R) ->
                   (Vec<G1Affine>,Vec<G2Affine>,Vec<Fr>){
-    return (Vec::new(),Vec::new(),Vec::new());
+    let n = inputs[0].raw.len();
+    let domain_n  = GeneralEvaluationDomain::<Fr>::new(n).unwrap();
+    let R = &setup.0[..n];
+    let Q = &setup.0[n..2*n];
+    let S = &setup.0[2*n..3*n];
+    let L_i_x = &setup.0[3*n..4*n];
+    let L_i_x_n = &setup.0[4*n..];
+
+    let R_x = G1Projective::msm(R, &inputs[0].raw).unwrap().into();
+    let Q_x = G1Projective::msm(Q, &inputs[0].raw).unwrap().into();
+    let temp: Vec<_> = (0..n).map(|i|srs.0[n*i]).collect();
+    let A_x = G1Projective::msm(&temp, &inputs[0].poly.coeffs).unwrap().into();
+    let S_x = G1Projective::msm(S, &inputs[0].raw).unwrap().into();
+    let P_x = G1Projective::msm(&srs.0[n*n-n..n*n], &output.poly.coeffs).unwrap().into();
+
+    let gamma = Fr::rand(rng);
+    let gamma_n = gamma.pow(&[n as u64]);
+    let z = inputs[0].poly.evaluate(&gamma_n);
+    let h_i: Vec<_> = (0..n).map(|i|(inputs[0].raw[i] - z) * (domain_n.element(i) - gamma_n).inverse().unwrap()).collect();
+    let z = (srs.0[0]*z).into();
+    let pi = G1Projective::msm(&L_i_x, &h_i).unwrap().into();
+    let pi_1 = G1Projective::msm(&L_i_x_n, &h_i).unwrap().into();
+
+    return (vec![R_x,Q_x,A_x,S_x,P_x,z,pi,pi_1],vec![setup.1[0]],Vec::new());
   }
   fn verify<R: Rng>(srs: (&Vec<G1Affine>,&Vec<G2Affine>),
-                    model: &DataEnc,
+                    _model: &DataEnc,
                     inputs: &Vec<DataEnc>,
-                    _output: &DataEnc,
+                    output: &DataEnc,
                     proof: (&Vec<G1Affine>,&Vec<G2Affine>,&Vec<Fr>),
                     rng: &mut R){
+    let n = inputs[0].len;
+    let [R_x,Q_x,A_x,S_x,P_x,z,pi,pi_1] = proof.0[..] else{panic!("Wrong proof format")};
+    let lhs = Bls12_381::pairing(A_x,proof.1[0]);
+    let rhs = Bls12_381::pairing(Q_x,srs.1[n*n]-srs.1[0]) + Bls12_381::pairing(R_x, srs.1[0]);
+    assert!(lhs==rhs);
+
+    let temp: G1Affine = (output.g1 * Fr::from(n as u64).inverse().unwrap()).into();
+    let lhs = Bls12_381::pairing(R_x - temp, srs.1[0]);
+    let rhs = Bls12_381::pairing(S_x, srs.1[n]);
+    assert!(lhs==rhs);
+
+    let lhs = Bls12_381::pairing(output.g1, srs.1[n*n-n]);
+    let rhs = Bls12_381::pairing(P_x, srs.1[0]);
+    assert!(lhs==rhs);
+
+    let gamma = Fr::rand(rng);
+    let gamma_n = gamma.pow(&[n as u64]);
+    let lhs = Bls12_381::pairing(inputs[0].g1 - z + pi*gamma_n, srs.1[0]);
+    let rhs = Bls12_381::pairing(pi,srs.1[1]);
+    assert!(lhs==rhs);
+
+    let lhs = Bls12_381::pairing(A_x - z + pi_1*gamma_n, srs.1[0]);
+    let rhs = Bls12_381::pairing(pi_1,srs.1[n]);
+    assert!(lhs==rhs);
   }
 }
 

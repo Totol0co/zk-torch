@@ -40,8 +40,8 @@ fn test_basic_block<BB: BasicBlock>(model: &Vec<Fr>, inputs: &Vec<Vec<Fr>>){
 }
 fn main() {
   let mut rng = StdRng::from_entropy();
-  const N:usize = 1<<4;
-  const n:usize = 1<<2;
+  const N:usize = 1<<6;
+  const n:usize = 1<<3;
   let mut a = Vec::new();
   let mut b = Vec::new();
   for _ in 0..N{
