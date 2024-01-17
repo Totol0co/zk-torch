@@ -1,6 +1,6 @@
 use ark_ec::{VariableBaseMSM, pairing::Pairing};
 use ark_poly::{GeneralEvaluationDomain, EvaluationDomain};
-use ark_bls12_381::{Fr, G1Projective, G1Affine, G2Projective, G2Affine, Bls12_381};
+use ark_bn254::{Fr, G1Projective, G1Affine, G2Projective, G2Affine, Bn254};
 use ark_std::{ops::Mul, ops::Sub};
 use rand::Rng;
 use super::{BasicBlock,Data,DataEnc};
@@ -42,12 +42,12 @@ impl BasicBlock for MulBasicBlock{
                     proof: (&Vec<G1Affine>,&Vec<G2Affine>,&Vec<Fr>),
                     _rng: &mut R){
     // Verify f(x)*g(x)-h(x)=z(x)t(x)
-    let lhs = Bls12_381::pairing(inputs[0].g1,proof.1[0]) - Bls12_381::pairing(output.g1,srs.1[0]);
-    let rhs = Bls12_381::pairing(proof.0[0],srs.1[inputs[0].len]-srs.1[0]);
+    let lhs = Bn254::pairing(inputs[0].g1,proof.1[0]) - Bn254::pairing(output.g1,srs.1[0]);
+    let rhs = Bn254::pairing(proof.0[0],srs.1[inputs[0].len]-srs.1[0]);
     assert!(lhs==rhs);
     // Verify gx2
-    let lhs = Bls12_381::pairing(inputs[1].g1,srs.1[0]);
-    let rhs = Bls12_381::pairing(srs.0[0],proof.1[0]);
+    let lhs = Bn254::pairing(inputs[1].g1,srs.1[0]);
+    let rhs = Bn254::pairing(srs.0[0],proof.1[0]);
     assert!(lhs==rhs);
   }
 }

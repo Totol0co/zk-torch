@@ -1,4 +1,4 @@
-use ark_bls12_381::{Fr, G1Affine, G2Affine};
+use ark_bn254::{Fr, G1Affine, G2Affine};
 use rand::Rng;
 use super::{BasicBlock,Data,DataEnc};
 

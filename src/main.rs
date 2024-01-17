@@ -1,31 +1,15 @@
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
-use ark_ec::AffineRepr;
-use ark_bls12_381::{Fr, G1Affine, G2Affine};
+use ark_bn254::{Fr, G1Affine, G2Affine};
 use ark_std::UniformRand;
 use rand::{rngs::StdRng,SeedableRng};
 use basic_block::*;
 mod basic_block;
 mod util;
+mod ptau;
 
-fn test_basic_block<BB: BasicBlock>(model: &Vec<Fr>, inputs: &Vec<Vec<Fr>>){
-  let N = std::cmp::max(model.len(),inputs[0].len());
+fn test_basic_block<BB: BasicBlock>(srs: (&Vec<G1Affine>,&Vec<G2Affine>), model: &Vec<Fr>, inputs: &Vec<Vec<Fr>>){
   let mut rng = StdRng::from_entropy();
-  let x = Fr::rand(&mut rng);
-  let mut xp = x;
-  // Generate SRS:
-  let mut srs = (vec![G1Affine::generator() ; N], vec![G2Affine::generator() ; N+1]);
-  for i in 1..N{
-    srs.0[i]=(srs.0[i]*xp).into();
-    xp*=x;
-  }
-  xp = x;
-  for i in 1..N+1{
-    srs.1[i]=(srs.1[i]*xp).into();
-    xp*=x;
-  }
-  let srs = (&(srs.0),&(srs.1));
-  // Proof:
   let output = BB::run(model,inputs);
   let model = Data::new(srs, model);
   let setup = BB::setup(srs,&model);
@@ -39,17 +23,19 @@ fn test_basic_block<BB: BasicBlock>(model: &Vec<Fr>, inputs: &Vec<Vec<Fr>>){
   BB::verify(srs,&model,&inputs,&output,(&(proof.0),&(proof.1),&(proof.2)),&mut rng2);
 }
 fn main() {
-  let mut rng = StdRng::from_entropy();
+  let srs = ptau::load_file("challenge",7);
+  let srs = (&srs.0,&srs.1);
   const N:usize = 1<<6;
   const n:usize = 1<<3;
+  let mut rng = StdRng::from_entropy();
   let mut a = Vec::new();
   let mut b = Vec::new();
   for _ in 0..N{
     a.push(Fr::rand(&mut rng));
     b.push(Fr::rand(&mut rng));
   }
-  test_basic_block::<AddBasicBlock>(&Vec::new(),&vec![a.clone(),b.clone()]);
-  test_basic_block::<MulBasicBlock>(&Vec::new(),&vec![a.clone(),b.clone()]);
-  test_basic_block::<CQBasicBlock>(&a,&vec![a[..n].to_vec()]);
-  test_basic_block::<CQLinBasicBlock>(&a,&vec![b[..n].to_vec()]);
+  test_basic_block::<AddBasicBlock>(srs,&Vec::new(),&vec![a.clone(),b.clone()]);
+  test_basic_block::<MulBasicBlock>(srs,&Vec::new(),&vec![a.clone(),b.clone()]);
+  test_basic_block::<CQBasicBlock>(srs,&a,&vec![a[..n].to_vec()]);
+  test_basic_block::<CQLinBasicBlock>(srs,&a,&vec![b[..n].to_vec()]);
 }

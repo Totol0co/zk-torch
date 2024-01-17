@@ -1,7 +1,7 @@
 use ark_ec::VariableBaseMSM;
 use ark_poly::univariate::DensePolynomial;
 use ark_poly::{GeneralEvaluationDomain, EvaluationDomain};
-use ark_bls12_381::{Fr, G1Affine, G1Projective, G2Affine};
+use ark_bn254::{Fr, G1Affine, G1Projective, G2Affine};
 use rand::Rng;
 pub use cq::CQBasicBlock;
 pub use cqlin::CQLinBasicBlock;

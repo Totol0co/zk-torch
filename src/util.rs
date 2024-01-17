@@ -1,6 +1,6 @@
 use ark_poly::{GeneralEvaluationDomain, EvaluationDomain};
 use ark_ff::Field;
-use ark_bls12_381::Fr;
+use ark_bn254::Fr;
 use ark_std::{Zero, One};
 use ark_ec::ScalarMul;
 

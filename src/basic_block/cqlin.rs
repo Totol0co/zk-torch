@@ -3,7 +3,7 @@
 use ark_ec::{VariableBaseMSM, pairing::Pairing};
 use ark_ff::Field;
 use ark_poly::{GeneralEvaluationDomain, EvaluationDomain, Polynomial};
-use ark_bls12_381::{Fr, G1Projective, G2Projective, G1Affine, G2Affine, Bls12_381};
+use ark_bn254::{Fr, G1Projective, G2Projective, G1Affine, G2Affine, Bn254};
 use ark_std::{Zero, One, UniformRand};
 use rand::Rng;
 use super::{BasicBlock,Data,DataEnc};
@@ -126,27 +126,27 @@ impl BasicBlock for CQLinBasicBlock{
                     rng: &mut R){
     let n = inputs[0].len;
     let [R_x,Q_x,A_x,S_x,P_x,z,pi,pi_1] = proof.0[..] else{panic!("Wrong proof format")};
-    let lhs = Bls12_381::pairing(A_x,proof.1[0]);
-    let rhs = Bls12_381::pairing(Q_x,srs.1[n*n]-srs.1[0]) + Bls12_381::pairing(R_x, srs.1[0]);
+    let lhs = Bn254::pairing(A_x,proof.1[0]);
+    let rhs = Bn254::pairing(Q_x,srs.1[n*n]-srs.1[0]) + Bn254::pairing(R_x, srs.1[0]);
     assert!(lhs==rhs);
 
     let temp: G1Affine = (output.g1 * Fr::from(n as u64).inverse().unwrap()).into();
-    let lhs = Bls12_381::pairing(R_x - temp, srs.1[0]);
-    let rhs = Bls12_381::pairing(S_x, srs.1[n]);
+    let lhs = Bn254::pairing(R_x - temp, srs.1[0]);
+    let rhs = Bn254::pairing(S_x, srs.1[n]);
     assert!(lhs==rhs);
 
-    let lhs = Bls12_381::pairing(output.g1, srs.1[n*n-n]);
-    let rhs = Bls12_381::pairing(P_x, srs.1[0]);
+    let lhs = Bn254::pairing(output.g1, srs.1[n*n-n]);
+    let rhs = Bn254::pairing(P_x, srs.1[0]);
     assert!(lhs==rhs);
 
     let gamma = Fr::rand(rng);
     let gamma_n = gamma.pow(&[n as u64]);
-    let lhs = Bls12_381::pairing(inputs[0].g1 - z + pi*gamma_n, srs.1[0]);
-    let rhs = Bls12_381::pairing(pi,srs.1[1]);
+    let lhs = Bn254::pairing(inputs[0].g1 - z + pi*gamma_n, srs.1[0]);
+    let rhs = Bn254::pairing(pi,srs.1[1]);
     assert!(lhs==rhs);
 
-    let lhs = Bls12_381::pairing(A_x - z + pi_1*gamma_n, srs.1[0]);
-    let rhs = Bls12_381::pairing(pi_1,srs.1[n]);
+    let lhs = Bn254::pairing(A_x - z + pi_1*gamma_n, srs.1[0]);
+    let rhs = Bn254::pairing(pi_1,srs.1[n]);
     assert!(lhs==rhs);
   }
 }
