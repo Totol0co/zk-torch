@@ -9,9 +9,5 @@ ark-ff = "0.4"
 ark-ec = "0.4"
 ark-poly = "0.4"
 ark-bn254 = "0.4"
-powersoftau = { git = "https://github.com/kobigurk/phase2-bn254.git" }
-pairing_ce = { git = "https://github.com/kobigurk/phase2-bn254.git" }
-ff_ce = "0.7"
-memmap = "0.7.0"
 rand = "0.8.5"
-
+rayon = "1"
