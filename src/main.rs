@@ -3,6 +3,7 @@
 use ark_bn254::{Fr, G1Affine, G2Affine};
 use ark_std::UniformRand;
 use rand::{rngs::StdRng,SeedableRng};
+use rayon::prelude::*;
 use basic_block::*;
 mod basic_block;
 mod util;
@@ -27,13 +28,8 @@ fn main() {
   let srs = (&srs.0,&srs.1);
   const N:usize = 1<<6;
   const n:usize = 1<<3;
-  let mut rng = StdRng::from_entropy();
-  let mut a = Vec::new();
-  let mut b = Vec::new();
-  for _ in 0..N{
-    a.push(Fr::rand(&mut rng));
-    b.push(Fr::rand(&mut rng));
-  }
+  let a: Vec<_> = (0..N).into_par_iter().map_init(rand::thread_rng, |rng, _| Fr::rand(rng)).collect();
+  let b: Vec<_> = (0..N).into_par_iter().map_init(rand::thread_rng, |rng, _| Fr::rand(rng)).collect();
   test_basic_block::<AddBasicBlock>(srs,&Vec::new(),&vec![a.clone(),b.clone()]);
   test_basic_block::<MulBasicBlock>(srs,&Vec::new(),&vec![a.clone(),b.clone()]);
   test_basic_block::<CQBasicBlock>(srs,&a,&vec![a[..n].to_vec()]);

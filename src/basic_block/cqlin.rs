@@ -31,10 +31,11 @@ impl BasicBlock for CQLinBasicBlock{
     let n_inv = Fr::from(n as u64).inverse().unwrap();
     let domain_n  = GeneralEvaluationDomain::<Fr>::new(n).unwrap();
     let domain_2n  = GeneralEvaluationDomain::<Fr>::new(2*n).unwrap();
-    let srs_p: Vec<G1Projective> = srs.0.iter().map(|x| (*x).into()).collect();
-    let L_i_x = util::ifft(domain_n, &srs_p[..n]);
+    let srs_p: Vec<G1Projective> = srs.0[..N].iter().map(|x| (*x).into()).collect();
+    let mut L_i_x = srs_p[..n].to_vec();
+    util::ifft_in_place(domain_n, &mut L_i_x);
     let mut L_i_x_n: Vec<_> = (0..n).map(|i| srs_p[n*i]).collect();
-    util::ifft_in_place(domain_n, &mut L_i_x_n);//good
+    util::ifft_in_place(domain_n, &mut L_i_x_n);
 
     let mut temp: Vec<Vec<_>>= (0..n).map(|i|(0..n).map(|j|srs_p[i+n*j]).collect()).collect();
     temp.iter_mut().for_each(|x| util::ifft_in_place(domain_n, x));
@@ -44,7 +45,8 @@ impl BasicBlock for CQLinBasicBlock{
     temp.iter_mut().for_each(|x| util::ifft_in_place(domain_n, x));
     let mut U2: Vec<Vec<_>> = (0..n).map(|i|(0..n).map(|j|temp[j][i]).collect()).collect();
     U2.iter_mut().for_each(|x| util::ifft_in_place(domain_n, x));
-    let mut V = util::ifft(domain_n, &srs_p[N-n..N]);
+    let mut V = srs_p[N-n..N].to_vec();
+    util::ifft_in_place(domain_n, &mut V);
     V.iter_mut().for_each(|x| *x *= n_inv);
 
     let mut srs_star: Vec<Vec<_>>= (0..n).map(|i|srs_p[n*i..n*i+n].to_vec()).collect();
@@ -70,7 +72,8 @@ impl BasicBlock for CQLinBasicBlock{
     let temp: Vec<Vec<_>> = (0..2*n).map(|i|(0..n).map(|j|srs_star[j][i]*temp[j][i]).collect()).collect();
     let mut temp: Vec<_> = temp.iter().map(|x|x.iter().sum::<G1Projective>()).collect();
     util::ifft_in_place(domain_2n, &mut temp);
-    let temp = util::fft(domain_n, &temp[n..]);
+    let mut temp = temp[n..].to_vec();
+    util::fft_in_place(domain_n, &mut temp);
     let Q: Vec<_> = (0..n).map(|i|temp[i]*domain_n.element(i)*n_inv).collect();
     let M_x = (0..n).map(|i|(0..n).map(|j|U2[i][j]*model.raw[i*n+j]).sum::<G2Projective>()).sum::<G2Projective>(); //TODO: Change to msm
 

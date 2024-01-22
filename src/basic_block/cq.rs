@@ -1,12 +1,13 @@
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
-use ark_ec::{VariableBaseMSM, AffineRepr, pairing::Pairing};
+use ark_ec::{AffineRepr, pairing::Pairing};
 use ark_ff::Field;
 use ark_poly::{evaluations::univariate::Evaluations, GeneralEvaluationDomain, EvaluationDomain,univariate::DensePolynomial, Polynomial};
 use ark_bn254::{Fr, G1Projective, G2Projective, G1Affine, G2Affine, Bn254};
 use ark_std::{Zero, One, ops::{Mul,Div,Sub}, UniformRand};
 use std::collections::HashMap;
 use rand::Rng;
+use rayon::prelude::*;
 use super::{BasicBlock,Data,DataEnc};
 use crate::util;
 
@@ -23,26 +24,22 @@ impl BasicBlock for CQBasicBlock{
     let N = model.raw.len();
     let domain_2N  = GeneralEvaluationDomain::<Fr>::new(2*N).unwrap();
     let domain_N  = GeneralEvaluationDomain::<Fr>::new(N).unwrap();
-    let srs_p : Vec<G1Projective> = srs.0.iter().map(|x| (*x).into()).collect();
-    let T_x_2 = G2Projective::msm(&srs.1[..N], &model.poly.coeffs).unwrap().into();
+    let srs_p : Vec<G1Projective> = srs.0[..N].iter().map(|x| (*x).into()).collect();
+    let T_x_2 = util::msm::<G2Projective>(&srs.1[..N], &model.poly.coeffs).into();
     let mut temp = model.poly.coeffs[1..].to_vec();
     temp.resize(N*2-1,Fr::zero());
-    let mut temp2 = srs_p[..N].to_vec();
+    let mut temp2 = srs_p.to_vec();
     temp2.reverse();
     let mut Q_i_x_1 = util::toeplitz_mul(domain_2N, &temp, &temp2);
     util::fft_in_place(domain_N, &mut Q_i_x_1);
     let temp = Fr::from(N as u32).inverse().unwrap();
     let temp2 = domain_N.group_gen_inv().pow(&[(N-1) as u64]);
-    for i in 0..N{
-      Q_i_x_1[i] *= temp * temp2.pow(&[i as u64]);
-    }
-    let L_i_x_1 = util::ifft(domain_N, &srs_p[..N]);
+    Q_i_x_1.par_iter_mut().enumerate().for_each(|(i,x)| *x *= temp * temp2.pow(&[i as u64]));
+    let mut L_i_x_1 = srs_p;
+    util::ifft_in_place(domain_N, &mut L_i_x_1);
     let mut L_i_0_x_1 = L_i_x_1.clone();
     let temp = srs.0[N-1] * Fr::from(N as u64).inverse().unwrap();
-    for i in 0..N{
-      L_i_0_x_1[i] *= domain_N.group_gen_inv().pow(&[i as u64]);
-      L_i_0_x_1[i] -= temp;
-    }
+    L_i_0_x_1.par_iter_mut().enumerate().for_each(|(i,x)| *x = *x * domain_N.group_gen_inv().pow(&[i as u64]) - temp);
     let Q_i_x_1 : Vec<G1Affine> = Q_i_x_1.iter().map(|x| (*x).into()).collect();
     let L_i_x_1 : Vec<G1Affine> = L_i_x_1.iter().map(|x| (*x).into()).collect();
     let L_i_0_x_1 : Vec<G1Affine> = L_i_0_x_1.iter().map(|x| (*x).into()).collect();
@@ -77,23 +74,23 @@ impl BasicBlock for CQBasicBlock{
       m_i.entry(table_dict.get(&inputs[0].raw[i]).unwrap()).and_modify(|x| *x+=1).or_insert(1);
     }
     let (temp, temp2) : (Vec<G1Affine>,Vec<Fr>)=m_i.iter().map(|(i,y)| (L_i_x_1[**i], Fr::from(*y as u32))).unzip();
-    let m_x_1 = G1Projective::msm(&temp, &temp2).unwrap().into();
+    let m_x_1 = util::msm::<G1Projective>(&temp, &temp2).into();
 
     //Round 2
     let beta = Fr::rand(rng);
     let A_i : HashMap<usize,Fr>= m_i.iter().map(|(i,y)| (**i,Fr::from(*y as u32) * (model.raw[**i]+beta).inverse().unwrap())).collect();
     let (temp, temp2) : (Vec<G1Affine>,Vec<Fr>)=A_i.iter().map(|(i,y)| (L_i_x_1[*i], *y)).unzip();
-    let A_x_1 = G1Projective::msm(&temp, &temp2).unwrap().into();
+    let A_x_1 = util::msm::<G1Projective>(&temp, &temp2).into();
     let (temp, temp2) : (Vec<G1Affine>,Vec<Fr>)=A_i.iter().map(|(i,y)| (Q_i_x_1[*i], *y)).unzip();
-    let Q_A_x_1 = G1Projective::msm(&temp, &temp2).unwrap().into();
+    let Q_A_x_1 = util::msm::<G1Projective>(&temp, &temp2).into();
     let B_i : Vec<Fr>= (0..n).map(|i| (inputs[0].raw[i]+beta).inverse().unwrap()).collect();
     let B = Evaluations::from_vec_and_domain(B_i.clone(), domain_n).interpolate();
     let B_0 = DensePolynomial{coeffs : B.coeffs[1..].to_vec()};
-    let B_0_x_1 = G1Projective::msm_unchecked(&srs.0[0..n-1], &B_0).into();
+    let B_0_x_1 = util::msm::<G1Projective>(&srs.0[0..n-1], &B_0).into();
     let mut Q_B = B.mul(&(inputs[0].poly.clone() + (DensePolynomial{coeffs:vec![beta]})));
     Q_B = Q_B.sub(&DensePolynomial{coeffs:vec![Fr::one()]}).divide_by_vanishing_poly(domain_n).unwrap().0;
-    let Q_B_x_1 = G1Projective::msm_unchecked(&srs.0[0..n-1], &Q_B).into();
-    let P_x_1 = G1Projective::msm_unchecked(&srs.0[N-n+1..N], &B_0).into();
+    let Q_B_x_1 = util::msm::<G1Projective>(&srs.0[0..n-1], &Q_B).into();
+    let P_x_1 = util::msm::<G1Projective>(&srs.0[N-n+1..N], &B_0).into();
 
     //Round 3
     let gamma = Fr::rand(rng);
@@ -109,9 +106,9 @@ impl BasicBlock for CQBasicBlock{
     let mut num = B_0 + inputs[0].poly.mul(eta)+ Q_B.mul(eta * eta);
     num -= &DensePolynomial{coeffs:vec![v]};
     let h = num.div(&DensePolynomial{coeffs:vec![-gamma,Fr::one()]});
-    let pi_gamma = G1Projective::msm_unchecked(&srs.0[..n-1],&h).into();
+    let pi_gamma = util::msm::<G1Projective>(&srs.0[..n-1],&h).into();
     let (temp, temp2) : (Vec<G1Affine>,Vec<Fr>)=A_i.iter().map(|(i,y)| (L_i_0_x_1[*i], *y)).unzip();
-    let A_0_x = G1Projective::msm(&temp, &temp2).unwrap().into();//11
+    let A_0_x = util::msm::<G1Projective>(&temp, &temp2).into();
     return (vec![m_x_1,A_x_1,Q_A_x_1,B_0_x_1,Q_B_x_1,P_x_1,pi_gamma,A_0_x],vec![setup.1[0]],vec![B_0_gamma,f_gamma,A_0]);
   }
   fn verify<R: Rng>(srs: (&Vec<G1Affine>,&Vec<G2Affine>),

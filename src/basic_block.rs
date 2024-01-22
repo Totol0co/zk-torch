@@ -1,8 +1,8 @@
-use ark_ec::VariableBaseMSM;
 use ark_poly::univariate::DensePolynomial;
 use ark_poly::{GeneralEvaluationDomain, EvaluationDomain};
 use ark_bn254::{Fr, G1Affine, G1Projective, G2Affine};
 use rand::Rng;
+use crate::util;
 pub use cq::CQBasicBlock;
 pub use cqlin::CQLinBasicBlock;
 pub use mul::MulBasicBlock;
@@ -22,7 +22,7 @@ impl Data{
     let N = (*raw).len();
     let domain  = GeneralEvaluationDomain::<Fr>::new(N).unwrap();
     let f = DensePolynomial{coeffs: domain.ifft(raw)};
-    let fx : G1Affine = G1Projective::msm_unchecked(&srs.0[..N], &f.coeffs).into();
+    let fx: G1Affine = util::msm::<G1Projective>(&srs.0[..N], &f.coeffs).into();
     return Data{raw: raw.to_vec(), poly: f, g1: fx};
   }
 }
