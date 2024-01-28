@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use ark_poly::{GeneralEvaluationDomain, EvaluationDomain};
 use ark_bn254::Fr;
 use ark_std::Zero;

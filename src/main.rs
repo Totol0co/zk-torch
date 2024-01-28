@@ -21,7 +21,7 @@ fn test_basic_block<BB: BasicBlock>(srs: (&Vec<G1Affine>,&Vec<G2Affine>), model:
   let model = DataEnc::new(&model);
   let inputs = inputs.iter().map(|x| DataEnc::new(x)).collect();
   let output = DataEnc::new(&output);
-  BB::verify(srs,&model,&inputs,&output,(&(proof.0),&(proof.1),&(proof.2)),&mut rng2);
+  BB::verify(srs,&model,&inputs,&output,(&(proof.0),&(proof.1)),&mut rng2);
 }
 fn main() {
   let srs = ptau::load_file("challenge",7);

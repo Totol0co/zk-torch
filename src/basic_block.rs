@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 use ark_poly::univariate::DensePolynomial;
 use ark_poly::{GeneralEvaluationDomain, EvaluationDomain};
 use ark_bn254::{Fr, G1Affine, G1Projective, G2Affine};
@@ -38,23 +39,31 @@ impl DataEnc{
 pub trait BasicBlock{
   fn run(model: &Vec<Fr>,
          inputs: &Vec<Vec<Fr>>) ->
-         Vec<Fr>;
+         Vec<Fr>{
+    Vec::new()
+  }
   fn setup(srs: (&Vec<G1Affine>,&Vec<G2Affine>),
            model: &Data) ->
-          (Vec<G1Affine>,Vec<G2Affine>);
+          (Vec<G1Affine>,Vec<G2Affine>){
+    (Vec::new(),Vec::new())
+  }
   fn prove<R: Rng>(srs: (&Vec<G1Affine>,&Vec<G2Affine>),
                    setup: (&Vec<G1Affine>,&Vec<G2Affine>),
                    model: &Data,
                    inputs: &Vec<Data>,
                    output: &Data,
                    rng: &mut R) ->
-                  (Vec<G1Affine>,Vec<G2Affine>,Vec<Fr>);
+                  (Vec<G1Affine>,Vec<G2Affine>){
+    (Vec::new(), Vec::new())
+  }
   fn verify<R: Rng>(srs: (&Vec<G1Affine>,&Vec<G2Affine>),
                     model: &DataEnc,
                     inputs: &Vec<DataEnc>,
                     output: &DataEnc,
-                    proof: (&Vec<G1Affine>,&Vec<G2Affine>,&Vec<Fr>),
-                    rng: &mut R);
+                    proof: (&Vec<G1Affine>,&Vec<G2Affine>),
+                    rng: &mut R){
+    ()
+  }
 }
 
 

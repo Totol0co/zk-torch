@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
-use ark_ec::{AffineRepr, pairing::Pairing};
+use ark_ec::pairing::Pairing;
 use ark_ff::Field;
 use ark_poly::{evaluations::univariate::Evaluations, GeneralEvaluationDomain, EvaluationDomain,univariate::DensePolynomial, Polynomial};
 use ark_bn254::{Fr, G1Projective, G2Projective, G1Affine, G2Affine, Bn254};
@@ -13,11 +13,6 @@ use crate::util;
 
 pub struct CQBasicBlock;
 impl BasicBlock for CQBasicBlock{
-  fn run(_model: &Vec<Fr>,
-         _inputs: &Vec<Vec<Fr>>) ->
-         Vec<Fr>{
-    return Vec::new();
-  }
   fn setup(srs: (&Vec<G1Affine>,&Vec<G2Affine>),
            model: &Data) ->
           (Vec<G1Affine>,Vec<G2Affine>){
@@ -40,9 +35,9 @@ impl BasicBlock for CQBasicBlock{
     let mut L_i_0_x_1 = L_i_x_1.clone();
     let temp = srs.0[N-1] * Fr::from(N as u64).inverse().unwrap();
     L_i_0_x_1.par_iter_mut().enumerate().for_each(|(i,x)| *x = *x * domain_N.group_gen_inv().pow(&[i as u64]) - temp);
-    let Q_i_x_1 : Vec<G1Affine> = Q_i_x_1.iter().map(|x| (*x).into()).collect();
-    let L_i_x_1 : Vec<G1Affine> = L_i_x_1.iter().map(|x| (*x).into()).collect();
-    let L_i_0_x_1 : Vec<G1Affine> = L_i_0_x_1.iter().map(|x| (*x).into()).collect();
+    let Q_i_x_1 : Vec<G1Affine> = Q_i_x_1.par_iter().map(|x| (*x).into()).collect();
+    let L_i_x_1 : Vec<G1Affine> = L_i_x_1.par_iter().map(|x| (*x).into()).collect();
+    let L_i_0_x_1 : Vec<G1Affine> = L_i_0_x_1.par_iter().map(|x| (*x).into()).collect();
     let mut setup = Q_i_x_1;
     setup.extend(L_i_x_1);
     setup.extend(L_i_0_x_1);
@@ -54,7 +49,7 @@ impl BasicBlock for CQBasicBlock{
                    inputs: &Vec<Data>,
                    _output: &Data,
                    rng: &mut R) ->
-                  (Vec<G1Affine>,Vec<G2Affine>,Vec<Fr>){
+                  (Vec<G1Affine>,Vec<G2Affine>){
     let N = model.raw.len();
     let n = inputs[0].raw.len();
     let domain_n  = GeneralEvaluationDomain::<Fr>::new(n).unwrap();
@@ -109,20 +104,30 @@ impl BasicBlock for CQBasicBlock{
     let pi_gamma = util::msm::<G1Projective>(&srs.0[..n-1],&h).into();
     let (temp, temp2) : (Vec<G1Affine>,Vec<Fr>)=A_i.iter().map(|(i,y)| (L_i_0_x_1[*i], *y)).unzip();
     let A_0_x = util::msm::<G1Projective>(&temp, &temp2).into();
-    return (vec![m_x_1,A_x_1,Q_A_x_1,B_0_x_1,Q_B_x_1,P_x_1,pi_gamma,A_0_x],vec![setup.1[0]],vec![B_0_gamma,f_gamma,A_0]);
+
+    let B_0_gamma_1 = (srs.0[0] * B_0_gamma).into();
+    let b_gamma_1 = (srs.0[0] * b_gamma).into();
+    let f_gamma_1 = (srs.0[0] * f_gamma).into();
+    let f_gamma_2 = (srs.1[0] * f_gamma).into();
+    let A_0_1 = (srs.0[0] * A_0).into();
+    let b_gamma_f_gamma = (srs.0[0] * (b_gamma * (f_gamma + beta))).into();
+
+    return (vec![m_x_1,A_x_1,Q_A_x_1,B_0_x_1,Q_B_x_1,P_x_1,pi_gamma,A_0_x,
+                 B_0_gamma_1,b_gamma_1,f_gamma_1,A_0_1,b_gamma_f_gamma],
+            vec![setup.1[0],f_gamma_2]);
   }
   fn verify<R: Rng>(srs: (&Vec<G1Affine>,&Vec<G2Affine>),
                     model: &DataEnc,
                     inputs: &Vec<DataEnc>,
                     _output: &DataEnc,
-                    proof: (&Vec<G1Affine>,&Vec<G2Affine>,&Vec<Fr>),
+                    proof: (&Vec<G1Affine>,&Vec<G2Affine>),
                     rng: &mut R){
     let N = model.len;
     let n = inputs[0].len;
     let domain_n  = GeneralEvaluationDomain::<Fr>::new(n).unwrap();
-    let [m_x_1,A_x_1,Q_A_x_1,B_0_x_1,Q_B_x_1,P_x_1,pi_gamma,A_0_x] = proof.0[..] else{panic!("Wrong proof format")};
-    let [T_x_2] = proof.1[..] else{panic!("Wrong proof format")};
-    let [B_0_gamma,f_gamma,A_0] = proof.2[..] else{panic!("Wrong proof format")};
+    let [m_x_1,A_x_1,Q_A_x_1,B_0_x_1,Q_B_x_1,P_x_1,pi_gamma,A_0_x,
+         B_0_gamma_1,b_gamma_1,f_gamma_1,A_0_1,b_gamma_f_gamma] = proof.0[..] else{panic!("Wrong proof format")};
+    let [T_x_2,f_gamma_2] = proof.1[..] else{panic!("Wrong proof format")};
 
     // Round 2
     let beta = Fr::rand(rng);
@@ -135,19 +140,25 @@ impl BasicBlock for CQBasicBlock{
     let rhs = Bn254::pairing(P_x_1,srs.1[0]);
     assert!(lhs==rhs);
 
+    // Check b_gamma_f_gamma
+    let lhs = Bn254::pairing(b_gamma_1,f_gamma_2 + srs.1[0] * beta);
+    let rhs = Bn254::pairing(b_gamma_f_gamma, srs.1[0]);
+    assert!(lhs==rhs);
+    let lhs = Bn254::pairing(f_gamma_1,srs.1[0]);
+    let rhs = Bn254::pairing(srs.0[0],f_gamma_2);
+    assert!(lhs==rhs);
+
     // Round 3
     let gamma = Fr::rand(rng);
     let eta = Fr::rand(rng);
-    let b_0 = Fr::from(N as u32) * A_0 * Fr::from(n as u32).inverse().unwrap();
     let Z_H_gamma = domain_n.evaluate_vanishing_polynomial(gamma);
-    let b_gamma = B_0_gamma * gamma + b_0;
-    let Q_b_gamma = (b_gamma * (f_gamma + beta) - Fr::one()) * Z_H_gamma.inverse().unwrap();
-    let v = B_0_gamma + eta * f_gamma + eta * eta * Q_b_gamma;
+    let Q_b_gamma_1 = (b_gamma_f_gamma - srs.0[0]) * Z_H_gamma.inverse().unwrap();
+    let v = B_0_gamma_1 + f_gamma_1 * eta + Q_b_gamma_1 * eta * eta;
     let c = B_0_x_1 + inputs[0].g1 * eta + Q_B_x_1 * eta * eta;
-    let lhs = Bn254::pairing(c - G1Affine::generator() * v + pi_gamma * gamma, srs.1[0]);
+    let lhs = Bn254::pairing(c - v + pi_gamma * gamma, srs.1[0]);
     let rhs = Bn254::pairing(pi_gamma, srs.1[1]);
     assert!(lhs==rhs);
-    let lhs = Bn254::pairing(A_x_1 -  G1Affine::generator() * A_0, srs.1[0]);
+    let lhs = Bn254::pairing(A_x_1 -  A_0_1, srs.1[0]);
     let rhs = Bn254::pairing(A_0_x, srs.1[1]);
     assert!(lhs==rhs);
   }

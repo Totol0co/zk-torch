@@ -96,7 +96,7 @@ impl BasicBlock for CQLinBasicBlock{
                    inputs: &Vec<Data>,
                    output: &Data,
                    rng: &mut R) ->
-                  (Vec<G1Affine>,Vec<G2Affine>,Vec<Fr>){
+                  (Vec<G1Affine>,Vec<G2Affine>){
     let n = inputs[0].raw.len();
     let domain_n  = GeneralEvaluationDomain::<Fr>::new(n).unwrap();
     let R = &setup.0[..n];
@@ -120,13 +120,13 @@ impl BasicBlock for CQLinBasicBlock{
     let pi = util::msm::<G1Projective>(&L_i_x, &h_i).into();
     let pi_1 = util::msm::<G1Projective>(&L_i_x_n, &h_i).into();
 
-    return (vec![R_x,Q_x,A_x,S_x,P_x,z,pi,pi_1],vec![setup.1[0]],Vec::new());
+    return (vec![R_x,Q_x,A_x,S_x,P_x,z,pi,pi_1],vec![setup.1[0]]);
   }
   fn verify<R: Rng>(srs: (&Vec<G1Affine>,&Vec<G2Affine>),
                     _model: &DataEnc,
                     inputs: &Vec<DataEnc>,
                     output: &DataEnc,
-                    proof: (&Vec<G1Affine>,&Vec<G2Affine>,&Vec<Fr>),
+                    proof: (&Vec<G1Affine>,&Vec<G2Affine>),
                     rng: &mut R){
     let n = inputs[0].len;
     let [R_x,Q_x,A_x,S_x,P_x,z,pi,pi_1] = proof.0[..] else{panic!("Wrong proof format")};
