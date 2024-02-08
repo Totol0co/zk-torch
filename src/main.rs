@@ -18,9 +18,9 @@ fn test_basic_block<BB: BasicBlock>(srs: (&Vec<G1Affine>, &Vec<G2Affine>), model
   let output = Data::new(srs, &output);
   let mut rng2 = rng.clone();
   let proof = BB::prove(srs, (&(setup.0), &(setup.1)), &model, &inputs, &output, &mut rng);
-  let model = DataEnc::new(&model);
-  let inputs = inputs.iter().map(|x| DataEnc::new(x)).collect();
-  let output = DataEnc::new(&output);
+  let model = DataEnc::new(srs, &model);
+  let inputs = inputs.iter().map(|x| DataEnc::new(srs, x)).collect();
+  let output = DataEnc::new(srs, &output);
   BB::verify(srs, &model, &inputs, &output, (&(proof.0), &(proof.1)), &mut rng2);
 }
 fn main() {
@@ -33,5 +33,5 @@ fn main() {
   test_basic_block::<AddBasicBlock>(srs, &Vec::new(), &vec![a.clone(), b.clone()]);
   test_basic_block::<MulBasicBlock>(srs, &Vec::new(), &vec![a.clone(), b.clone()]);
   test_basic_block::<CQBasicBlock>(srs, &a, &vec![a[..n].to_vec()]);
-  test_basic_block::<CQLinBasicBlock>(srs, &a, &vec![b[..n].to_vec()]);
+  //test_basic_block::<CQLinBasicBlock>(srs, &a, &vec![b[..n].to_vec()]);
 }

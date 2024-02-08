@@ -4,10 +4,11 @@ pub use add::AddBasicBlock;
 use ark_bn254::{Fr, G1Affine, G1Projective, G2Affine};
 use ark_poly::univariate::DensePolynomial;
 use ark_poly::{EvaluationDomain, GeneralEvaluationDomain};
+use ark_std::UniformRand;
 pub use cq::CQBasicBlock;
 pub use cqlin::CQLinBasicBlock;
 pub use mul::MulBasicBlock;
-use rand::Rng;
+use rand::{rngs::StdRng, Rng, SeedableRng};
 pub mod add;
 pub mod cq;
 pub mod cqlin;
@@ -17,6 +18,7 @@ pub struct Data {
   pub raw: Vec<Fr>,
   pub poly: DensePolynomial<Fr>,
   pub g1: G1Affine,
+  pub r: Fr,
 }
 impl Data {
   pub fn new(srs: (&Vec<G1Affine>, &Vec<G2Affine>), raw: &Vec<Fr>) -> Data {
@@ -24,10 +26,12 @@ impl Data {
     let domain = GeneralEvaluationDomain::<Fr>::new(N).unwrap();
     let f = DensePolynomial { coeffs: domain.ifft(raw) };
     let fx: G1Affine = util::msm::<G1Projective>(&srs.0[..N], &f.coeffs).into();
+    let mut rng = StdRng::from_entropy();
     return Data {
       raw: raw.to_vec(),
       poly: f,
       g1: fx,
+      r: Fr::rand(&mut rng),
     };
   }
 }
@@ -36,10 +40,10 @@ pub struct DataEnc {
   pub g1: G1Affine,
 }
 impl DataEnc {
-  pub fn new(data: &Data) -> DataEnc {
+  pub fn new(srs: (&Vec<G1Affine>, &Vec<G2Affine>), data: &Data) -> DataEnc {
     return DataEnc {
       len: data.raw.len(),
-      g1: data.g1,
+      g1: (data.g1 + srs.0[srs.1.len() - 1] * data.r).into(),
     };
   }
 }
