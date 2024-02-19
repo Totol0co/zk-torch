@@ -3,13 +3,14 @@
 use ark_bn254::{Fr, G1Affine, G2Affine};
 use ark_std::UniformRand;
 use basic_block::*;
+use ndarray::{arr1, ArrayD};
 use rand::{rngs::StdRng, SeedableRng};
 use rayon::prelude::*;
 mod basic_block;
 mod ptau;
 mod util;
 
-fn test_basic_block<BB: BasicBlock>(srs: (&Vec<G1Affine>, &Vec<G2Affine>), model: &Vec<Fr>, inputs: &Vec<Vec<Fr>>) {
+fn test_basic_block<BB: BasicBlock>(srs: (&Vec<G1Affine>, &Vec<G2Affine>), model: &ArrayD<Fr>, inputs: &Vec<ArrayD<Fr>>) {
   let mut rng = StdRng::from_entropy();
   let output = BB::run(model, inputs);
   let model = Data::new(srs, model);
@@ -30,8 +31,8 @@ fn main() {
   const n: usize = 1 << 3;
   let a: Vec<_> = (0..N).into_par_iter().map_init(rand::thread_rng, |rng, _| Fr::rand(rng)).collect();
   let b: Vec<_> = (0..N).into_par_iter().map_init(rand::thread_rng, |rng, _| Fr::rand(rng)).collect();
-  test_basic_block::<AddBasicBlock>(srs, &Vec::new(), &vec![a.clone(), b.clone()]);
-  test_basic_block::<MulBasicBlock>(srs, &Vec::new(), &vec![a.clone(), b.clone()]);
-  test_basic_block::<CQBasicBlock>(srs, &a, &vec![a[..n].to_vec()]);
-  //test_basic_block::<CQLinBasicBlock>(srs, &a, &vec![b[..n].to_vec()]);
+  test_basic_block::<AddBasicBlock>(srs, &arr1(&vec![]).into_dyn(), &vec![arr1(&a).into_dyn(), arr1(&b).into_dyn()]);
+  test_basic_block::<MulBasicBlock>(srs, &arr1(&vec![]).into_dyn(), &vec![arr1(&a).into_dyn(), arr1(&b).into_dyn()]);
+  test_basic_block::<CQBasicBlock>(srs, &arr1(&a).into_dyn(), &vec![arr1(&a[..n]).into_dyn()]);
+  test_basic_block::<CQLinBasicBlock>(srs, &ArrayD::from_shape_vec(vec![n, n], a).unwrap(), &vec![arr1(&b[..n]).into_dyn()]);
 }

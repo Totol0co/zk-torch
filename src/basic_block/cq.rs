@@ -81,8 +81,8 @@ impl BasicBlock for CQBasicBlock {
 
     // Calculate m
     let mut m_i = HashMap::new();
-    for i in 0..n {
-      m_i.entry(table_dict.get(&inputs[0].raw[i]).unwrap()).and_modify(|x| *x += 1).or_insert(1);
+    for x in inputs[0].raw.iter() {
+      m_i.entry(table_dict.get(x).unwrap()).and_modify(|y| *y += 1).or_insert(1);
     }
     let (temp, temp2): (Vec<G1Affine>, Vec<Fr>) = m_i.iter().map(|(i, y)| (L_i_x_1[**i], Fr::from(*y as u32))).unzip();
     let m_x = util::msm::<G1Projective>(&temp, &temp2).into();
@@ -102,7 +102,7 @@ impl BasicBlock for CQBasicBlock {
     };
 
     // Calculate B
-    let B_i: Vec<Fr> = (0..n).map(|i| (inputs[0].raw[i] + beta).inverse().unwrap()).collect();
+    let B_i: Vec<Fr> = inputs[0].raw.iter().map(|x| (*x + beta).inverse().unwrap()).collect();
     let B_poly = Evaluations::from_vec_and_domain(B_i.clone(), domain_n).interpolate();
     let B_Q_poly = B_poly
       .mul(&(inputs[0].poly.clone() + (DensePolynomial { coeffs: vec![beta] })))
