@@ -14,36 +14,40 @@ use rand::{rngs::StdRng, SeedableRng};
 use rayon::prelude::*;
 use std::collections::HashMap;
 
-pub struct CQBasicBlock {
-  pub table_dict: HashMap<Fr, usize>,
+pub struct CQ2BasicBlock {
+  pub table_dict: HashMap<(Fr, Fr), usize>,
 }
-impl BasicBlock for CQBasicBlock {
+impl BasicBlock for CQ2BasicBlock {
   fn get_dims(&self) -> (Vec<usize>, Vec<usize>) {
-    (vec![1], vec![1])
+    (vec![1, 1], vec![1, 1])
   }
   fn setup(&self, srs: &SRS, model: &Vec<&Data>) -> (Vec<G1Projective>, Vec<G2Projective>) {
     let N = model[0].raw.len();
     let domain_2N = GeneralEvaluationDomain::<Fr>::new(2 * N).unwrap();
     let domain_N = GeneralEvaluationDomain::<Fr>::new(N).unwrap();
-    let T_x_2 = util::msm::<G2Projective>(&srs.X2A, &model[0].poly.coeffs) + srs.Y2P * model[0].r;
-    let mut temp = model[0].poly.coeffs[1..].to_vec();
-    temp.resize(N * 2 - 1, Fr::zero());
-    let mut temp2 = srs.X1P[..N].to_vec();
-    temp2.reverse();
-    let mut Q_i_x_1 = util::toeplitz_mul(domain_2N, &temp, &temp2);
-    util::fft_in_place(domain_N, &mut Q_i_x_1);
-    let temp = Fr::from(N as u32).inverse().unwrap();
-    let temp2 = domain_N.group_gen_inv().pow(&[(N - 1) as u64]);
-    Q_i_x_1.par_iter_mut().enumerate().for_each(|(i, x)| *x *= temp * temp2.pow(&[i as u64]));
+    let mut setup = vec![];
+    let mut setup2 = vec![];
+    for i in 0..2 {
+      setup2.push(util::msm::<G2Projective>(&srs.X2A, &model[i].poly.coeffs) + srs.Y2P * model[i].r);
+      let mut temp = model[i].poly.coeffs[1..].to_vec();
+      temp.resize(N * 2 - 1, Fr::zero());
+      let mut temp2 = srs.X1P[..N].to_vec();
+      temp2.reverse();
+      let mut Q_i_x_1 = util::toeplitz_mul(domain_2N, &temp, &temp2);
+      util::fft_in_place(domain_N, &mut Q_i_x_1);
+      let temp = Fr::from(N as u32).inverse().unwrap();
+      let temp2 = domain_N.group_gen_inv().pow(&[(N - 1) as u64]);
+      Q_i_x_1.par_iter_mut().enumerate().for_each(|(i, x)| *x *= temp * temp2.pow(&[i as u64]));
+      setup.extend(Q_i_x_1);
+    }
     let mut L_i_x_1 = srs.X1P[..N].to_vec();
     util::ifft_in_place(domain_N, &mut L_i_x_1);
     let mut L_i_0_x_1 = L_i_x_1.clone();
     let temp = srs.X1P[N - 1] * Fr::from(N as u64).inverse().unwrap();
     L_i_0_x_1.par_iter_mut().enumerate().for_each(|(i, x)| *x = *x * domain_N.group_gen_inv().pow(&[i as u64]) - temp);
-    let mut setup = Q_i_x_1;
     setup.extend(L_i_x_1);
     setup.extend(L_i_0_x_1);
-    return (setup, vec![T_x_2]);
+    return (setup, setup2);
   }
   fn prove(
     &mut self,
@@ -57,24 +61,33 @@ impl BasicBlock for CQBasicBlock {
     let N = model[0].raw.len();
     let n = inputs[0].raw.len();
     let domain_n = GeneralEvaluationDomain::<Fr>::new(n).unwrap();
+    let alpha = Fr::rand(rng);
+    let agg_input = inputs[0].raw.iter().zip(inputs[1].raw.iter()).map(|(x, y)| *x + *y * alpha).collect();
+    let mut agg_input = Data::new(srs, &agg_input); //Unnecessary msm
+    agg_input.r = inputs[0].r + inputs[1].r * alpha;
+    let agg_model_g1 = model[0].g1 + model[1].g1 * alpha;
+    let agg_model_r = model[0].r + model[1].r * alpha;
 
     // gen(N, t):
-    let Q_i_x_1 = &setup.0[..N];
-    let L_i_x_1 = &setup.0[N..2 * N];
-    let L_i_0_x_1 = &setup.0[2 * N..];
+    let Q_i_x_1_A = &setup.0[..N];
+    let Q_i_x_1_B = &setup.0[N..2 * N];
+    let L_i_x_1 = &setup.0[2 * N..3 * N];
+    let L_i_0_x_1 = &setup.0[3 * N..];
+
     if self.table_dict.len() == 0 {
       for i in 0..N {
-        self.table_dict.insert(model[0].raw[i], i);
+        self.table_dict.insert((model[0].raw[i], model[1].raw[i]), i);
       }
     }
 
     // Calculate m
     let mut m_i = HashMap::new();
-    for x in inputs[0].raw.iter() {
-      if !self.table_dict.contains_key(x) {
-        println!("{:?},{:?}", x, -*x);
+    for x in inputs[0].raw.iter().zip(inputs[1].raw.iter()) {
+      let temp = (*x.0, *x.1);
+      if !self.table_dict.contains_key(&temp) {
+        println!("{:?}", temp);
       }
-      m_i.entry(self.table_dict.get(x).unwrap()).and_modify(|y| *y += 1).or_insert(1);
+      m_i.entry(self.table_dict.get(&temp).unwrap()).and_modify(|y| *y += 1).or_insert(1);
     }
     let (temp, temp2): (Vec<G1Affine>, Vec<Fr>) = m_i.iter().map(|(i, y)| (L_i_x_1[**i], Fr::from(*y as u32))).unzip();
     let m_x = util::msm::<G1Projective>(&temp, &temp2);
@@ -82,20 +95,29 @@ impl BasicBlock for CQBasicBlock {
     let beta = Fr::rand(rng);
 
     // Calculate A
-    let A_i: HashMap<usize, Fr> = m_i.iter().map(|(i, y)| (**i, Fr::from(*y as u32) * (model[0].raw[**i] + beta).inverse().unwrap())).collect();
+    let A_i: HashMap<usize, Fr> = m_i
+      .iter()
+      .map(|(i, y)| {
+        (
+          **i,
+          Fr::from(*y as u32) * (model[0].raw[**i] + model[1].raw[**i] * alpha + beta).inverse().unwrap(),
+        )
+      })
+      .collect();
     let (temp, temp2): (Vec<G1Affine>, Vec<Fr>) = A_i.iter().map(|(i, y)| (L_i_x_1[*i], *y)).unzip();
     let A_x = util::msm::<G1Projective>(&temp, &temp2);
-    let (temp, temp2): (Vec<G1Affine>, Vec<Fr>) = A_i.iter().map(|(i, y)| (Q_i_x_1[*i], *y)).unzip();
+    let temp: Vec<G1Projective> = A_i.iter().map(|(i, y)| Q_i_x_1_A[*i] + Q_i_x_1_B[*i] * alpha).collect();
+    let temp: Vec<G1Affine> = temp.iter().map(|x| (*x).into()).collect();
     let A_Q_x = util::msm::<G1Projective>(&temp, &temp2);
     let A_zero = srs.X1P[0] * (Fr::from(N as u32).inverse().unwrap() * A_i.iter().map(|(_, y)| *y).sum::<Fr>());
-    let (temp, temp2): (Vec<G1Affine>, Vec<Fr>) = A_i.iter().map(|(i, y)| (L_i_0_x_1[*i], *y)).unzip();
+    let temp: Vec<G1Affine> = A_i.iter().map(|(i, y)| L_i_0_x_1[*i]).collect();
     let A_zero_div = util::msm::<G1Projective>(&temp, &temp2);
 
     // Calculate B
-    let B_i: Vec<Fr> = inputs[0].raw.iter().map(|x| (*x + beta).inverse().unwrap()).collect();
+    let B_i: Vec<Fr> = agg_input.raw.iter().map(|x| (*x + beta).inverse().unwrap()).collect();
     let B_poly = Evaluations::from_vec_and_domain(B_i.clone(), domain_n).interpolate();
     let B_Q_poly = B_poly
-      .mul(&(inputs[0].poly.clone() + (DensePolynomial { coeffs: vec![beta] })))
+      .mul(&(agg_input.poly.clone() + (DensePolynomial { coeffs: vec![beta] })))
       .sub(&DensePolynomial { coeffs: vec![Fr::one()] })
       .divide_by_vanishing_poly(domain_n)
       .unwrap()
@@ -105,7 +127,7 @@ impl BasicBlock for CQBasicBlock {
     let B_zero_div = util::msm::<G1Projective>(&srs.X1A, &B_poly.coeffs[1..]);
     let B_DC = util::msm::<G1Projective>(&srs.X1A[N - n..], &B_poly.coeffs);
 
-    let f_x_2 = util::msm::<G2Projective>(&srs.X2A, &inputs[0].poly.coeffs) + srs.Y2P * inputs[0].r;
+    let f_x_2 = util::msm::<G2Projective>(&srs.X2A, &agg_input.poly.coeffs) + srs.Y2P * agg_input.r;
 
     // Blinding
     let mut rng2 = StdRng::from_entropy();
@@ -113,15 +135,19 @@ impl BasicBlock for CQBasicBlock {
     let proof: Vec<G1Projective> = vec![m_x, A_x, A_Q_x, A_zero, A_zero_div, B_x, B_Q_x, B_zero_div, B_DC];
     let mut proof: Vec<G1Projective> = proof.iter().enumerate().map(|(i, x)| (*x) + srs.Y1P * r[i]).collect();
     let mut C = vec![
-      -(srs.X1P[N] - srs.X1P[0]) * r[2] + model[0].g1 * r[1] + A_x * model[0].r + (srs.Y1P * model[0].r * r[1]) + srs.X1P[0] * (r[1] * beta - r[0]),
+      -(srs.X1P[N] - srs.X1P[0]) * r[2]
+        + agg_model_g1 * r[1]
+        + A_x * agg_model_r
+        + (srs.Y1P * agg_model_r * r[1])
+        + srs.X1P[0] * (r[1] * beta - r[0]),
       -srs.X1P[1] * r[4] + srs.X1P[0] * (r[1] - r[3]),
-      -(srs.X1P[n] - srs.X1P[0]) * r[6] + inputs[0].g1 * r[5] + B_x * inputs[0].r + (srs.Y1P * inputs[0].r * r[5]) + srs.X1P[0] * (r[5] * beta),
+      -(srs.X1P[n] - srs.X1P[0]) * r[6] + agg_input.g1 * r[5] + B_x * agg_input.r + (srs.Y1P * agg_input.r * r[5]) + srs.X1P[0] * (r[5] * beta),
       -srs.X1P[1] * r[7] + srs.X1P[0] * (r[5] - r[3] * Fr::from(N as u32) * Fr::from(n as u32).inverse().unwrap()),
       -srs.X1P[0] * r[8] + srs.X1P[N - n] * r[5],
     ];
     proof.append(&mut C);
 
-    return (proof, vec![setup.1[0].into(), f_x_2]);
+    return (proof, vec![(setup.1[0] + setup.1[1] * alpha).into(), f_x_2]);
   }
   fn verify(
     &self,
@@ -134,11 +160,14 @@ impl BasicBlock for CQBasicBlock {
   ) {
     let N = model[0].len;
     let n = inputs[0].len;
+    let alpha = Fr::rand(rng);
     let domain_n = GeneralEvaluationDomain::<Fr>::new(n).unwrap();
     let [m_x, A_x, A_Q_x, A_zero, A_zero_div, B_x, B_Q_x, B_zero_div, B_DC, C1, C2, C3, C4, C5] = proof.0[..] else {
       panic!("Wrong proof format")
     };
     let [T_x_2, f_x_2] = proof.1[..] else { panic!("Wrong proof format") };
+    let agg_input = inputs[0].g1 + (inputs[1].g1 * alpha);
+    let agg_model = model[0].g1 + (model[1].g1 * alpha);
 
     let beta = Fr::rand(rng);
 
@@ -148,7 +177,7 @@ impl BasicBlock for CQBasicBlock {
     assert!(lhs == rhs);
 
     // Check T_x_2 is the G2 equivalent of the model
-    let lhs = Bn254::pairing(model[0].g1, srs.X2A[0]);
+    let lhs = Bn254::pairing(agg_model, srs.X2A[0]);
     let rhs = Bn254::pairing(srs.X1A[0], T_x_2);
     assert!(lhs == rhs);
 
@@ -163,7 +192,7 @@ impl BasicBlock for CQBasicBlock {
     assert!(lhs == rhs);
 
     // Check f_x_2 is the G2 equivalent of the input
-    let lhs = Bn254::pairing(inputs[0].g1, srs.X2A[0]);
+    let lhs = Bn254::pairing(agg_input, srs.X2A[0]);
     let rhs = Bn254::pairing(srs.X1A[0], f_x_2);
     assert!(lhs == rhs);
 

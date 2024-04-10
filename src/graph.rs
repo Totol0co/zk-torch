@@ -1,81 +1,57 @@
-use crate::basic_block::BasicBlock;
 use crate::basic_block::*;
-use ark_bn254::{Fr, G1Affine, G2Affine};
+use crate::batched_basic_block::*;
+use ark_bn254::{Fr, G1Affine, G1Projective, G2Affine, G2Projective};
 use ndarray::ArrayD;
 use rand::rngs::StdRng;
 
 pub struct Node {
   pub basic_block: usize,
-  pub input_nodes: Vec<usize>,
-  pub output_nodes: Vec<usize>,
+  pub inputs: Vec<(i32, usize)>, //(node, output #)
 }
 
 pub struct Graph {
-  pub basic_blocks: Vec<Box<dyn BasicBlock>>,
+  pub basic_blocks: Vec<BatchedBasicBlock>,
   pub nodes: Vec<Node>,
-  pub input_node: usize,
 }
 
 impl Graph {
-  pub fn run(&self, inputs: &Vec<&ArrayD<Fr>>, models: &Vec<&ArrayD<Fr>>) -> Vec<ArrayD<Fr>> {
-    let mut outputs = vec![ArrayD::zeros(vec![]); self.nodes.len()];
-    // Run the nodes that have no inputs
-    for i in 0..self.nodes.len() {
-      if self.nodes[i].input_nodes.len() == 0 && i != self.input_node {
-        outputs[i] = self.basic_blocks[self.nodes[i].basic_block].run(&models[self.nodes[i].basic_block], &vec![]);
-      }
-    }
-    // DFS:
-    let mut stack = vec![self.input_node];
-    while stack.len() > 0 {
-      let curr = stack.pop().unwrap();
-      let currNode = &self.nodes[curr];
-      if curr == self.input_node {
-        outputs[curr] = self.basic_blocks[currNode.basic_block].run(&models[currNode.basic_block], inputs);
-      } else {
-        let myInputs = currNode.input_nodes.iter().map(|i| &(outputs[*i])).collect();
-        outputs[curr] = self.basic_blocks[currNode.basic_block].run(&models[currNode.basic_block], &myInputs);
-      }
-      for n in &currNode.output_nodes {
-        if *self.nodes[*n].input_nodes.last().unwrap() == curr {
-          stack.push(*n);
-        }
-      }
-    }
+  pub fn run(&self, inputs: &Vec<&ArrayD<Fr>>, models: &Vec<&Vec<&ArrayD<Fr>>>) -> Vec<Vec<ArrayD<Fr>>> {
+    let mut outputs = vec![vec![]; self.nodes.len()];
+    self.nodes.iter().enumerate().for_each(|(i, n)| {
+      println!("running {i} {:?}", n.basic_block);
+      let myInputs = n.inputs.iter().map(|(j, k)| if *j < 0 { inputs[*k] } else { &(outputs[*j as usize][*k]) }).collect();
+      outputs[i] = self.basic_blocks[n.basic_block].run(&models[n.basic_block], &myInputs);
+    });
     return outputs;
   }
-  pub fn setup(&self, srs: (&Vec<G1Affine>, &Vec<G2Affine>), models: &Vec<&Data>) -> Vec<(Vec<G1Affine>, Vec<G2Affine>)> {
+  pub fn setup(&self, srs: &SRS, models: &Vec<&Vec<&ArrayD<Data>>>) -> Vec<(Vec<G1Projective>, Vec<G2Projective>)> {
     self.basic_blocks.iter().zip(models.iter()).map(|(b, m)| b.setup(srs, m)).collect()
   }
   pub fn prove(
-    &self,
-    srs: (&Vec<G1Affine>, &Vec<G2Affine>),
+    &mut self,
+    srs: &SRS,
     setups: &Vec<(&Vec<G1Affine>, &Vec<G2Affine>)>,
-    models: &Vec<&Data>,
-    inputs: &Vec<&Data>,
-    outputs: &Vec<&Data>,
+    models: &Vec<&Vec<&ArrayD<Data>>>,
+    inputs: &Vec<&ArrayD<Data>>,
+    outputs: &Vec<&Vec<&ArrayD<Data>>>,
     rng: &mut StdRng,
-  ) -> Vec<(Vec<G1Affine>, Vec<G2Affine>)> {
+  ) -> Vec<(Vec<G1Projective>, Vec<G2Projective>)> {
     self
       .nodes
       .iter()
       .enumerate()
       .map(|(i, n)| {
-        if i == self.input_node {
-          self.basic_blocks[n.basic_block].prove(srs, setups[n.basic_block], models[n.basic_block], &inputs, outputs[i], rng)
-        } else {
-          let inputs = n.input_nodes.iter().map(|j| outputs[*j]).collect();
-          self.basic_blocks[n.basic_block].prove(srs, setups[n.basic_block], models[n.basic_block], &inputs, outputs[i], rng)
-        }
+        let myInputs: Vec<&ArrayD<Data>> = n.inputs.iter().map(|(j, k)| if *j < 0 { inputs[*k] } else { &(outputs[*j as usize][*k]) }).collect();
+        self.basic_blocks[n.basic_block].prove(srs, setups[n.basic_block], models[n.basic_block], &myInputs, outputs[i], rng)
       })
       .collect()
   }
   pub fn verify(
     &self,
-    srs: (&Vec<G1Affine>, &Vec<G2Affine>),
-    models: &Vec<&DataEnc>,
-    inputs: &Vec<&DataEnc>,
-    outputs: &Vec<&DataEnc>,
+    srs: &SRS,
+    models: &Vec<&Vec<&ArrayD<DataEnc>>>,
+    inputs: &Vec<&ArrayD<DataEnc>>,
+    outputs: &Vec<&Vec<&ArrayD<DataEnc>>>,
     proofs: &Vec<(&Vec<G1Affine>, &Vec<G2Affine>)>,
     rng: &mut StdRng,
   ) {
@@ -84,12 +60,8 @@ impl Graph {
       .iter()
       .enumerate()
       .map(|(i, n)| {
-        if i == self.input_node {
-          self.basic_blocks[n.basic_block].verify(srs, models[n.basic_block], inputs, outputs[i], proofs[i], rng)
-        } else {
-          let inputs = n.input_nodes.iter().map(|j| outputs[*j]).collect();
-          self.basic_blocks[n.basic_block].verify(srs, models[n.basic_block], &inputs, outputs[i], proofs[i], rng)
-        }
+        let myInputs = n.inputs.iter().map(|(j, k)| if *j < 0 { inputs[*k] } else { &(outputs[*j as usize][*k]) }).collect();
+        self.basic_blocks[n.basic_block].verify(srs, models[n.basic_block], &myInputs, outputs[i], proofs[i], rng)
       })
       .collect()
   }
