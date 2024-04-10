@@ -122,3 +122,12 @@ pub fn fr_to_int(x: Fr) -> i32 {
     -((-x).into_bigint().0[0] as i32)
   }
 }
+
+pub fn calc_pow(alpha: Fr, n: usize) -> Vec<Fr> {
+  // Starts at alpha^1 for AlternatingBasicBlock to distinguish first elements
+  let mut pow: Vec<Fr> = vec![alpha; n];
+  for i in 0..n - 1 {
+    pow[i + 1] = pow[i] * alpha;
+  }
+  pow
+}
