@@ -1,24 +1,20 @@
 use super::{BasicBlock, Data, DataEnc, SRS};
 use ark_bn254::{Bn254, Fr, G1Affine, G1Projective, G2Affine, G2Projective};
 use ark_ec::pairing::Pairing;
+use ndarray::{azip, ArrayD, IxDyn};
 use rand::rngs::StdRng;
 
 pub struct SubBasicBlock;
 impl BasicBlock for SubBasicBlock {
-  fn get_dims(&self) -> (Vec<usize>, Vec<usize>) {
-    (vec![], vec![1, 1])
-  }
-  fn run(&self, _model: &Vec<&Vec<Fr>>, inputs: &Vec<&Vec<Fr>>) -> Vec<Vec<Fr>> {
-    let mut r = vec![];
-    let m = ark_std::cmp::max(inputs[0].len(), inputs[1].len());
-    for i in 0..m {
-      if inputs[0].len() <= i {
-        r.push(inputs[0][0] - inputs[1][i]);
-      } else if inputs[1].len() <= i {
-        r.push(inputs[0][i] - inputs[1][0]);
-      } else {
-        r.push(inputs[0][i] - inputs[1][i]);
-      }
+  fn run(&self, _model: &ArrayD<Fr>, inputs: &Vec<&ArrayD<Fr>>) -> Vec<ArrayD<Fr>> {
+    assert!(inputs.len() == 2 && inputs[0].ndim() <= 1 && inputs[1].ndim() <= 1);
+    let mut r = ArrayD::zeros(IxDyn(&[std::cmp::max(inputs[0].len(), inputs[1].len())]));
+    if inputs[0].len() == 1 {
+      azip!((r in &mut r, &x in inputs[1]) *r = *inputs[0].first().unwrap() - x);
+    } else if inputs[1].len() == 1 {
+      azip!((r in &mut r, &x in inputs[0]) *r = x - *inputs[1].first().unwrap());
+    } else {
+      azip!((r in &mut r, &x in inputs[0], &y in inputs[1]) *r = x - y);
     }
     vec![r]
   }
@@ -26,27 +22,33 @@ impl BasicBlock for SubBasicBlock {
     &mut self,
     srs: &SRS,
     _setup: (&Vec<G1Affine>, &Vec<G2Affine>),
-    _model: &Vec<&Data>,
-    inputs: &Vec<&Data>,
-    outputs: &Vec<&Data>,
-    rng: &mut StdRng,
+    _model: &ArrayD<Data>,
+    inputs: &Vec<&ArrayD<Data>>,
+    outputs: &Vec<&ArrayD<Data>>,
+    _rng: &mut StdRng,
   ) -> (Vec<G1Projective>, Vec<G2Projective>) {
+    let a = inputs[0].first().unwrap();
+    let b = inputs[1].first().unwrap();
+    let c = outputs[0].first().unwrap();
     // Blinding
-    let C = srs.X1P[0] * (inputs[0].r - inputs[1].r - outputs[0].r);
+    let C = srs.X1P[0] * (a.r - b.r - c.r);
     (vec![C], Vec::new())
   }
   fn verify(
     &self,
     srs: &SRS,
-    _model: &Vec<&DataEnc>,
-    inputs: &Vec<&DataEnc>,
-    outputs: &Vec<&DataEnc>,
+    _model: &ArrayD<DataEnc>,
+    inputs: &Vec<&ArrayD<DataEnc>>,
+    outputs: &Vec<&ArrayD<DataEnc>>,
     proof: (&Vec<G1Affine>, &Vec<G2Affine>),
     _rng: &mut StdRng,
   ) {
+    let a = inputs[0].first().unwrap();
+    let b = inputs[1].first().unwrap();
+    let c = outputs[0].first().unwrap();
     // Verify f(x)-g(x)=h(x)
-    let lhs = Bn254::pairing(inputs[0].g1 - inputs[1].g1, srs.X2A[0]);
-    let rhs = Bn254::pairing(outputs[0].g1, srs.X2A[0]) + Bn254::pairing(proof.0[0], srs.Y2A);
+    let lhs = Bn254::pairing(a.g1 - b.g1, srs.X2A[0]);
+    let rhs = Bn254::pairing(c.g1, srs.X2A[0]) + Bn254::pairing(proof.0[0], srs.Y2A);
     assert!(lhs == rhs);
   }
 }
