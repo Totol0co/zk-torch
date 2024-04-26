@@ -1,6 +1,5 @@
-use super::{BasicBlock, Data, DataEnc, SRS};
-use ark_bn254::{Bn254, Fr, G1Affine, G1Projective, G2Affine, G2Projective};
-use ark_ec::pairing::Pairing;
+use super::{BasicBlock, Data, DataEnc, PairingCheck, SRS};
+use ark_bn254::{Fr, G1Affine, G1Projective, G2Affine, G2Projective};
 use ndarray::{arr0, azip, ArrayD, IxDyn};
 use rand::rngs::StdRng;
 
@@ -37,11 +36,12 @@ impl BasicBlock for AddBasicBlock {
     outputs: &Vec<&ArrayD<DataEnc>>,
     _proof: (&Vec<G1Affine>, &Vec<G2Affine>),
     _rng: &mut StdRng,
-  ) {
+  ) -> Vec<PairingCheck> {
     let a = inputs[0].first().unwrap();
     let b = inputs[1].first().unwrap();
     let c = outputs[0].first().unwrap();
     // Verify f(x)+g(x)=h(x)
     assert!(a.g1 + b.g1 == c.g1);
+    vec![]
   }
 }
