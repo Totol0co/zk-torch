@@ -14,10 +14,21 @@ use rand::{rngs::StdRng, SeedableRng};
 use rayon::prelude::*;
 use std::collections::HashMap;
 
+#[derive(Debug)]
 pub struct CQ2BasicBlock {
   pub table_dict: HashMap<(Fr, Fr), usize>,
+  pub setup: Option<(Box<dyn BasicBlock>, i32, usize)>,
 }
+
 impl BasicBlock for CQ2BasicBlock {
+  fn genModel(&self) -> ArrayD<Fr> {
+    util::gen_cq_table(
+      &(self.setup.as_ref().unwrap().0),
+      self.setup.as_ref().unwrap().1,
+      self.setup.as_ref().unwrap().2,
+    )
+  }
+
   fn setup(&self, srs: &SRS, model: &ArrayD<Data>) -> (Vec<G1Projective>, Vec<G2Projective>) {
     assert!(model.ndim() == 1 && model.len() == 2);
     let N = model[0].raw.len();
@@ -47,6 +58,7 @@ impl BasicBlock for CQ2BasicBlock {
     setup.extend(L_i_0_x_1);
     return (setup, setup2);
   }
+
   fn prove(
     &mut self,
     srs: &SRS,
@@ -58,7 +70,7 @@ impl BasicBlock for CQ2BasicBlock {
   ) -> (Vec<G1Projective>, Vec<G2Projective>) {
     assert!(inputs.len() == 2 && inputs[0].len() == 1 && inputs[1].len() == 1);
     let N = model[0].raw.len();
-    let inputs = vec![inputs[0].first().unwrap(), inputs[1].first().unwrap()];
+    let inputs = vec![&inputs[0][0], &inputs[1][0]];
     assert!(inputs[0].raw.len() == inputs[1].raw.len());
     let n = inputs[0].raw.len();
     let domain_n = GeneralEvaluationDomain::<Fr>::new(n).unwrap();
@@ -150,6 +162,7 @@ impl BasicBlock for CQ2BasicBlock {
 
     return (proof, vec![(setup.1[0] + setup.1[1] * alpha).into(), f_x_2]);
   }
+
   fn verify(
     &self,
     srs: &SRS,
@@ -160,7 +173,7 @@ impl BasicBlock for CQ2BasicBlock {
     rng: &mut StdRng,
   ) -> Vec<PairingCheck> {
     let mut checks = Vec::new();
-    let inputs = vec![inputs[0].first().unwrap(), inputs[1].first().unwrap()];
+    let inputs = vec![&inputs[0][0], &inputs[1][0]];
     let N = model[0].len;
     let n = inputs[0].len;
     let alpha = Fr::rand(rng);

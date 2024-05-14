@@ -2,10 +2,12 @@ use super::BasicBlock;
 use ark_bn254::Fr;
 use ndarray::{arr1, ArrayD};
 
+#[derive(Debug)]
 pub struct RoPEBasicBlock {
   pub token_i: usize,
   pub output_SF: usize,
 }
+
 impl BasicBlock for RoPEBasicBlock {
   fn run(&self, _model: &ArrayD<Fr>, _inputs: &Vec<&ArrayD<Fr>>) -> Vec<ArrayD<Fr>> {
     let mut r1 = vec![];

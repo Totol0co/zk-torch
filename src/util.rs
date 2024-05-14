@@ -8,7 +8,7 @@ use ark_ec::{ScalarMul, VariableBaseMSM};
 use ark_ff::PrimeField;
 use ark_poly::{EvaluationDomain, GeneralEvaluationDomain};
 use ark_std::{UniformRand, Zero};
-use ndarray::{arr0, concatenate, Array1, ArrayD, Axis, IxDyn};
+use ndarray::{arr1, concatenate, Array1, ArrayD, Axis, IxDyn};
 use rand::{rngs::StdRng, SeedableRng};
 use rayon::prelude::*;
 use std::collections::HashMap;
@@ -22,6 +22,7 @@ fn bitreverse(mut n: u32, l: u64) -> u32 {
   }
   r
 }
+
 pub fn fft_helper<G: ScalarMul + std::ops::MulAssign<Fr>>(a: &mut Vec<G>, domain: GeneralEvaluationDomain<Fr>, inv: bool) {
   let n = a.len();
   let log_size = domain.log_size_of_group();
@@ -59,20 +60,24 @@ pub fn fft_helper<G: ScalarMul + std::ops::MulAssign<Fr>>(a: &mut Vec<G>, domain
     (0..n).into_par_iter().map(|i| curr.0[i]).collect_into_vec(curr.1);
   }
 }
+
 pub fn fft<G: ScalarMul + std::ops::MulAssign<Fr>>(domain: GeneralEvaluationDomain<Fr>, a: &Vec<G>) -> Vec<G> {
   let mut r = a.to_vec();
   fft_helper(&mut r, domain, false);
   r
 }
+
 pub fn ifft<G: ScalarMul + std::ops::MulAssign<Fr>>(domain: GeneralEvaluationDomain<Fr>, a: &Vec<G>) -> Vec<G> {
   let mut r = a.to_vec();
   fft_helper(&mut r, domain, true);
   r.par_iter_mut().for_each(|x| *x *= domain.size_inv());
   r
 }
+
 pub fn fft_in_place<G: ScalarMul + std::ops::MulAssign<Fr>>(domain: GeneralEvaluationDomain<Fr>, a: &mut Vec<G>) {
   fft_helper(a, domain, false);
 }
+
 pub fn ifft_in_place<G: ScalarMul + std::ops::MulAssign<Fr>>(domain: GeneralEvaluationDomain<Fr>, a: &mut Vec<G>) {
   fft_helper(a, domain, true);
   a.par_iter_mut().for_each(|x| *x *= domain.size_inv());
@@ -130,7 +135,6 @@ pub fn fr_to_int(x: Fr) -> i32 {
 }
 
 pub fn calc_pow(alpha: Fr, n: usize) -> Vec<Fr> {
-  // Starts at alpha^1 for AlternatingBasicBlock to distinguish first elements
   let mut pow: Vec<Fr> = vec![alpha; n];
   for i in 0..n - 1 {
     pow[i + 1] = pow[i] * alpha;
@@ -140,7 +144,10 @@ pub fn calc_pow(alpha: Fr, n: usize) -> Vec<Fr> {
 
 pub fn convert_to_data(srs: &SRS, a: &ArrayD<Fr>) -> ArrayD<Data> {
   if a.ndim() == 0 {
-    return arr0(Data::new(srs, a.view().as_slice().unwrap())).into_dyn();
+    return arr1(&[Data::new(srs, a.view().as_slice().unwrap())]).into_dyn();
+  }
+  if a.ndim() == 1 {
+    return arr1(&[Data::new(srs, a.as_slice().unwrap())]).into_dyn();
   }
   a.map_axis(Axis(a.ndim() - 1), |r| Data::new(srs, r.as_slice().unwrap()))
 }
