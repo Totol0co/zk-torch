@@ -6,10 +6,16 @@ pub struct MatMulLayer;
 impl Layer for MatMulLayer {
   fn graph() -> Graph {
     let mut graph = Graph::new();
-    let matmul = graph.addBB(Box::new(MatMulBasicBlock {}));
+    let matmul = graph.addBB(Box::new(RepeaterBasicBlock {
+      basic_block: Box::new(MatMulBasicBlock {}),
+      N: 2,
+    }));
     let change_SF = graph.addBB(Box::new(ChangeSFBasicBlock { input_SF: 6, output_SF: 3 }));
-    let change_SF_check = graph.addBB(Box::new(CQ2BasicBlock {
-      setup: Some((Box::new(ChangeSFBasicBlock { input_SF: 6, output_SF: 3 }), -(1 << 5), 1 << 6)),
+    let change_SF_check = graph.addBB(Box::new(RepeaterBasicBlock {
+      basic_block: Box::new(CQ2BasicBlock {
+        setup: Some((Box::new(ChangeSFBasicBlock { input_SF: 6, output_SF: 3 }), -(1 << 5), 1 << 6)),
+      }),
+      N: 1,
     }));
     let matmul_output = graph.addNode(matmul, vec![(-1, 0), (-2, 0)]);
     let change_SF_output = graph.addNode(change_SF, vec![(matmul_output, 0)]);
