@@ -2,6 +2,7 @@ use crate::basic_block::*;
 use crate::util;
 use ark_bn254::{Bn254, Fr, G1Affine, G1Projective, G2Affine, G2Projective};
 use ark_ec::pairing::{Pairing, PairingOutput};
+use ark_poly::univariate::DensePolynomial;
 use ark_serialize::CanonicalSerialize;
 use ark_std::Zero;
 use ndarray::ArrayD;
@@ -60,7 +61,7 @@ impl Graph {
     return outputsEnc;
   }
 
-  pub fn setup(&self, srs: &SRS, models: &Vec<&ArrayD<Data>>) -> Vec<(Vec<G1Projective>, Vec<G2Projective>)> {
+  pub fn setup(&self, srs: &SRS, models: &Vec<&ArrayD<Data>>) -> Vec<(Vec<G1Projective>, Vec<G2Projective>, Vec<DensePolynomial<Fr>>)> {
     self
       .basic_blocks
       .iter()
@@ -76,12 +77,12 @@ impl Graph {
   pub fn prove(
     &mut self,
     srs: &SRS,
-    setups: &Vec<(&Vec<G1Affine>, &Vec<G2Affine>)>,
+    setups: &Vec<(&Vec<G1Affine>, &Vec<G2Affine>, &Vec<DensePolynomial<Fr>>)>,
     models: &Vec<&ArrayD<Data>>,
     inputs: &Vec<&ArrayD<Data>>,
     outputs: &Vec<&Vec<&ArrayD<Data>>>,
     rng: &mut StdRng,
-  ) -> Vec<(Vec<G1Affine>, Vec<G2Affine>)> {
+  ) -> Vec<(Vec<G1Affine>, Vec<G2Affine>, Vec<Fr>)> {
     let mut cache = HashMap::new();
     self
       .nodes
@@ -91,9 +92,10 @@ impl Graph {
         println!("proving {i} {:?}", self.basic_blocks[n.basic_block]);
         let myInputs: Vec<&ArrayD<Data>> = n.inputs.iter().map(|(j, k)| if *j < 0 { inputs[*k] } else { &(outputs[*j as usize][*k]) }).collect();
         let proof = self.basic_blocks[n.basic_block].prove(srs, setups[n.basic_block], models[n.basic_block], &myInputs, outputs[i], rng, &mut cache);
-        let proof: (Vec<G1Affine>, Vec<G2Affine>) = (
+        let proof: (Vec<G1Affine>, Vec<G2Affine>, Vec<Fr>) = (
           proof.0.iter().map(|x| (*x).into()).collect(),
           proof.1.iter().map(|x| (*x).into()).collect(),
+          proof.2.iter().map(|x| (*x).into()).collect(),
         );
         let mut bytes = Vec::new();
         proof.serialize_uncompressed(&mut bytes).unwrap();
@@ -109,7 +111,7 @@ impl Graph {
     models: &Vec<&ArrayD<DataEnc>>,
     inputs: &Vec<&ArrayD<DataEnc>>,
     outputs: &Vec<&Vec<&ArrayD<DataEnc>>>,
-    proofs: &Vec<(&Vec<G1Affine>, &Vec<G2Affine>)>,
+    proofs: &Vec<(&Vec<G1Affine>, &Vec<G2Affine>, &Vec<Fr>)>,
     rng: &mut StdRng,
   ) {
     let mut cache = HashMap::new();
@@ -122,7 +124,7 @@ impl Graph {
         let myInputs = n.inputs.iter().map(|(j, k)| if *j < 0 { inputs[*k] } else { &(outputs[*j as usize][*k]) }).collect();
         let pairings = self.basic_blocks[n.basic_block].verify(srs, models[n.basic_block], &myInputs, outputs[i], proofs[i], rng, &mut cache);
         let mut bytes = Vec::new();
-        let temp: (Vec<G1Affine>, Vec<G2Affine>) = (proofs[i].0.clone(), proofs[i].1.clone());
+        let temp: (Vec<G1Affine>, Vec<G2Affine>, Vec<Fr>) = (proofs[i].0.clone(), proofs[i].1.clone(), proofs[i].2.clone());
         temp.serialize_uncompressed(&mut bytes).unwrap();
         util::add_randomness(rng, bytes);
         pairings

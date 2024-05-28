@@ -2,6 +2,7 @@ use crate::basic_block::*;
 use crate::{convert_to_data, ptau, util};
 use ark_bn254::{Bn254, Fr, G1Affine, G2Affine};
 use ark_ec::pairing::{Pairing, PairingOutput};
+use ark_poly::univariate::DensePolynomial;
 use ark_std::UniformRand;
 use ark_std::Zero;
 use ndarray::{arr0, concatenate, s, ArrayD, Axis, IxDyn};
@@ -14,11 +15,12 @@ fn testBasicBlock<BB: BasicBlock>(mut basic_block: BB, srs: &SRS, model: &ArrayD
   let outputs: Vec<&ArrayD<Fr>> = outputs.iter().map(|x| x).collect();
   let model = convert_to_data(srs, model);
   let setup = basic_block.setup(srs, &model);
-  let setup: (Vec<G1Affine>, Vec<G2Affine>) = (
+  let setup: (Vec<G1Affine>, Vec<G2Affine>, Vec<DensePolynomial<Fr>>) = (
     setup.0.iter().map(|y| (*y).into()).collect(),
     setup.1.iter().map(|y| (*y).into()).collect(),
+    setup.2.iter().map(|y| (y.clone())).collect(),
   );
-  let setup = (&setup.0, &setup.1);
+  let setup = (&setup.0, &setup.1, &setup.2);
   let inputs: Vec<ArrayD<Data>> = inputs.iter().map(|input| convert_to_data(srs, input)).collect();
   let inputs: Vec<&ArrayD<Data>> = inputs.iter().map(|input| input).collect();
   let outputs: Vec<ArrayD<Data>> = basic_block.encodeOutputs(srs, &model, &inputs, &outputs);
@@ -26,11 +28,12 @@ fn testBasicBlock<BB: BasicBlock>(mut basic_block: BB, srs: &SRS, model: &ArrayD
   let mut rng2 = rng.clone();
   let mut cache = HashMap::new();
   let proof = basic_block.prove(srs, setup, &model, &inputs, &outputs, &mut rng, &mut cache);
-  let proof: (Vec<G1Affine>, Vec<G2Affine>) = (
+  let proof: (Vec<G1Affine>, Vec<G2Affine>, Vec<Fr>) = (
     proof.0.iter().map(|y| (*y).into()).collect(),
     proof.1.iter().map(|y| (*y).into()).collect(),
+    proof.2.iter().map(|y| (*y)).collect(),
   );
-  let proof = (&proof.0, &proof.1);
+  let proof = (&proof.0, &proof.1, &proof.2);
   let model = model.map(|x| DataEnc::new(srs, x));
   let inputs: Vec<ArrayD<DataEnc>> = inputs.iter().map(|x| (*x).map(|y| DataEnc::new(srs, y))).collect();
   let inputs: Vec<&ArrayD<DataEnc>> = inputs.iter().map(|input| input).collect();
@@ -86,4 +89,77 @@ fn testBasicBlocks() {
   testBasicBlock(PermuteBasicBlock { permutation: p1 }, srs, &empty, &vec![&a]);
   testBasicBlock(PermuteBasicBlock { permutation: p2 }, srs, &empty, &vec![&a]);
   testBasicBlock(PermuteBasicBlock { permutation: p3 }, srs, &empty, &vec![&a]);
+}
+
+#[test]
+fn test_copy_constraint() {
+  let srs = &ptau::load_file("challenge", 7, 7);
+  let empty = ArrayD::zeros(IxDyn(&[0]));
+  // output dim padding
+  testBasicBlock(
+    CopyConstraintBasicBlock {
+      permutation: ArrayD::from_shape_vec(vec![2, 2], vec![IxDyn(&[1, 1]), IxDyn(&[1, 0]), IxDyn(&[1, 0]), IxDyn(&[0, 0])]).unwrap(),
+      input_dim: IxDyn(&[2, 2]),
+      output_dim: IxDyn(&[2, 2]),
+    },
+    srs,
+    &empty,
+    &vec![&ArrayD::from_shape_vec(vec![2, 2], (1..5).map(|x| Fr::from(x)).collect()).unwrap()],
+  );
+  // 2d -> 3d
+  testBasicBlock(
+    CopyConstraintBasicBlock {
+      permutation: ArrayD::from_shape_vec(
+        vec![2, 2, 4],
+        vec![
+          IxDyn(&[1, 1]),
+          IxDyn(&[2, 0]),
+          IxDyn(&[3, 1]),
+          IxDyn(&[0, 0]),
+          IxDyn(&[1, 1]),
+          IxDyn(&[2, 0]),
+          IxDyn(&[3, 1]),
+          IxDyn(&[0, 0]),
+          IxDyn(&[1, 1]),
+          IxDyn(&[2, 0]),
+          IxDyn(&[3, 1]),
+          IxDyn(&[0, 0]),
+          IxDyn(&[1, 1]),
+          IxDyn(&[2, 0]),
+          IxDyn(&[3, 1]),
+          IxDyn(&[0, 0]),
+        ],
+      )
+      .unwrap(),
+      input_dim: IxDyn(&[4, 2]),
+      output_dim: IxDyn(&[2, 2, 4]),
+    },
+    srs,
+    &empty,
+    &vec![&ArrayD::from_shape_vec(vec![4, 2], (1..9).map(|x| Fr::from(x)).collect()).unwrap()],
+  );
+  // 3d -> 2d
+  testBasicBlock(
+    CopyConstraintBasicBlock {
+      permutation: ArrayD::from_shape_vec(
+        vec![4, 2],
+        vec![
+          IxDyn(&[1, 1, 0]),
+          IxDyn(&[1, 0, 1]),
+          IxDyn(&[0, 1, 0]),
+          IxDyn(&[0, 0, 0]),
+          IxDyn(&[0, 1, 0]),
+          IxDyn(&[1, 1, 0]),
+          IxDyn(&[0, 1, 1]),
+          IxDyn(&[0, 0, 0]),
+        ],
+      )
+      .unwrap(),
+      input_dim: IxDyn(&[2, 2, 4]),
+      output_dim: IxDyn(&[4, 2]),
+    },
+    srs,
+    &empty,
+    &vec![&ArrayD::from_shape_vec(vec![2, 2, 4], (1..17).map(|x| Fr::from(x)).collect()).unwrap()],
+  );
 }

@@ -36,13 +36,13 @@ impl BasicBlock for PermuteBasicBlock {
   fn prove(
     &mut self,
     srs: &SRS,
-    _setup: (&Vec<G1Affine>, &Vec<G2Affine>),
+    _setup: (&Vec<G1Affine>, &Vec<G2Affine>, &Vec<DensePolynomial<Fr>>),
     _model: &ArrayD<Data>,
     inputs: &Vec<&ArrayD<Data>>,
     outputs: &Vec<&ArrayD<Data>>,
     rng: &mut StdRng,
     cache: &mut ProveVerifyCache,
-  ) -> (Vec<G1Projective>, Vec<G2Projective>) {
+  ) -> (Vec<G1Projective>, Vec<G2Projective>, Vec<Fr>) {
     let CacheValues::RLCRandom(alpha) = cache.entry("permute_alpha".to_owned()).or_insert_with(|| CacheValues::RLCRandom(Fr::rand(rng))) else {
       panic!("Cache type error")
     };
@@ -140,7 +140,7 @@ impl BasicBlock for PermuteBasicBlock {
     ];
     proof.append(&mut corr);
 
-    return (proof, vec![]);
+    return (proof, vec![], Vec::new());
   }
 
   fn verify(
@@ -149,7 +149,7 @@ impl BasicBlock for PermuteBasicBlock {
     _model: &ArrayD<DataEnc>,
     inputs: &Vec<&ArrayD<DataEnc>>,
     outputs: &Vec<&ArrayD<DataEnc>>,
-    proof: (&Vec<G1Affine>, &Vec<G2Affine>),
+    proof: (&Vec<G1Affine>, &Vec<G2Affine>, &Vec<Fr>),
     rng: &mut StdRng,
     cache: &mut ProveVerifyCache,
   ) -> Vec<PairingCheck> {

@@ -40,13 +40,13 @@ impl BasicBlock for MatMulBasicBlock {
   fn prove(
     &mut self,
     srs: &SRS,
-    _setup: (&Vec<G1Affine>, &Vec<G2Affine>),
+    _setup: (&Vec<G1Affine>, &Vec<G2Affine>, &Vec<DensePolynomial<Fr>>),
     _model: &ArrayD<Data>,
     inputs: &Vec<&ArrayD<Data>>,
     outputs: &Vec<&ArrayD<Data>>,
     rng: &mut StdRng,
     cache: &mut ProveVerifyCache,
-  ) -> (Vec<G1Projective>, Vec<G2Projective>) {
+  ) -> (Vec<G1Projective>, Vec<G2Projective>, Vec<Fr>) {
     let l = inputs[0].len();
     let m = inputs[0].first().unwrap().raw.len();
     let n = inputs[1].len();
@@ -146,7 +146,7 @@ impl BasicBlock for MatMulBasicBlock {
     ];
     proof.append(&mut corr);
 
-    return (proof, vec![flat_B_g2]);
+    return (proof, vec![flat_B_g2], Vec::new());
   }
 
   fn verify(
@@ -155,7 +155,7 @@ impl BasicBlock for MatMulBasicBlock {
     _model: &ArrayD<DataEnc>,
     inputs: &Vec<&ArrayD<DataEnc>>,
     outputs: &Vec<&ArrayD<DataEnc>>,
-    proof: (&Vec<G1Affine>, &Vec<G2Affine>),
+    proof: (&Vec<G1Affine>, &Vec<G2Affine>, &Vec<Fr>),
     rng: &mut StdRng,
     cache: &mut ProveVerifyCache,
   ) -> Vec<PairingCheck> {

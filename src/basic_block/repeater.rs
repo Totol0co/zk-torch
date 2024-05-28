@@ -1,6 +1,7 @@
 use super::{BasicBlock, Data, DataEnc, PairingCheck, ProveVerifyCache, SRS};
 use crate::util;
 use ark_bn254::{Fr, G1Affine, G1Projective, G2Affine, G2Projective};
+use ark_poly::univariate::DensePolynomial;
 use ndarray::{arr1, azip, s, ArrayD, Axis, Dimension, IxDyn, SliceInfo, SliceInfoElem};
 use rand::rngs::StdRng;
 
@@ -121,30 +122,31 @@ impl BasicBlock for RepeaterBasicBlock {
     combineArr(&temp)
   }
 
-  fn setup(&self, srs: &SRS, model: &ArrayD<Data>) -> (Vec<G1Projective>, Vec<G2Projective>) {
+  fn setup(&self, srs: &SRS, model: &ArrayD<Data>) -> (Vec<G1Projective>, Vec<G2Projective>, Vec<DensePolynomial<Fr>>) {
     self.basic_block.setup(srs, model)
   }
 
   fn prove(
     &mut self,
     srs: &SRS,
-    setup: (&Vec<G1Affine>, &Vec<G2Affine>),
+    setup: (&Vec<G1Affine>, &Vec<G2Affine>, &Vec<DensePolynomial<Fr>>),
     model: &ArrayD<Data>,
     inputs: &Vec<&ArrayD<Data>>,
     outputs: &Vec<&ArrayD<Data>>,
     rng: &mut StdRng,
     cache: &mut ProveVerifyCache,
-  ) -> (Vec<G1Projective>, Vec<G2Projective>) {
+  ) -> (Vec<G1Projective>, Vec<G2Projective>, Vec<Fr>) {
     let temp = broadcastN(inputs, Some(outputs), self.N - 1);
     let temp = temp.map(|(localInputs, localOutputs)| {
       let localInputs: Vec<_> = localInputs.iter().map(|y| y).collect();
       let localOutputs: Vec<_> = localOutputs.as_ref().unwrap().iter().map(|y| y).collect();
       self.basic_block.prove(srs, setup, model, &localInputs, &localOutputs, rng, cache)
     });
-    let mut proof = (vec![], vec![]);
-    temp.for_each(|(a, b)| {
+    let mut proof = (vec![], vec![], vec![]);
+    temp.for_each(|(a, b, c)| {
       proof.0.extend_from_slice(&a[..]);
       proof.1.extend_from_slice(&b[..]);
+      proof.2.extend_from_slice(&c[..]);
     });
     proof
   }
@@ -155,7 +157,7 @@ impl BasicBlock for RepeaterBasicBlock {
     model: &ArrayD<DataEnc>,
     inputs: &Vec<&ArrayD<DataEnc>>,
     outputs: &Vec<&ArrayD<DataEnc>>,
-    proof: (&Vec<G1Affine>, &Vec<G2Affine>),
+    proof: (&Vec<G1Affine>, &Vec<G2Affine>, &Vec<Fr>),
     rng: &mut StdRng,
     cache: &mut ProveVerifyCache,
   ) -> Vec<PairingCheck> {
@@ -164,14 +166,23 @@ impl BasicBlock for RepeaterBasicBlock {
     let l = temp.len();
     let divA = proof.0.len() / l;
     let divB = proof.1.len() / l;
-    let combined: Vec<_> = (0..l).map(|i| (&proof.0[i * divA..i * divA + divA], &proof.1[i * divB..i * divB + divB])).collect();
+    let divC = proof.2.len() / l;
+    let combined: Vec<_> = (0..l)
+      .map(|i| {
+        (
+          &proof.0[i * divA..i * divA + divA],
+          &proof.1[i * divB..i * divB + divB],
+          &proof.2[i * divC..i * divC + divC],
+        )
+      })
+      .collect();
     let proofArr = ArrayD::from_shape_vec(temp.shape(), combined).unwrap();
 
     let mut pairings = vec![];
     azip!(((localInputs, localOutputs) in &temp, localProof in &proofArr){
       let localInputs: Vec<_> = localInputs.iter().map(|y| y).collect();
       let localOutputs: Vec<_> = localOutputs.as_ref().unwrap().iter().map(|y| y).collect();
-      let localProof = (&localProof.0.to_vec(), &localProof.1.to_vec());
+      let localProof = (&localProof.0.to_vec(), &localProof.1.to_vec(), &localProof.2.to_vec());
       let mut temp = self.basic_block.verify(srs, model, &localInputs, &localOutputs, localProof, rng, cache);
       pairings.append(&mut temp);
     });
