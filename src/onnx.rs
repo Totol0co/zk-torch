@@ -126,6 +126,7 @@ fn get_local_graph(
     "Add" => Ok(AddLayer::graph(&input_shapes, &node_constants, &node_attributes)),
     "Mul" => Ok(MulLayer::graph(&input_shapes, &node_constants, &node_attributes)),
     "Cast" => Ok(CastLayer::graph(&input_shapes, &node_constants, &node_attributes)),
+    "Concat" => Ok(ConcatLayer::graph(&input_shapes, &node_constants, &node_attributes)),
     "Sub" => Ok(SubLayer::graph(&input_shapes, &node_constants, &node_attributes)),
     "MatMul" => Ok(MatMulLayer::graph(&input_shapes, &node_constants, &node_attributes)),
     "Relu" => Ok(ReLULayer::graph(&input_shapes, &node_constants, &node_attributes)),
@@ -141,6 +142,8 @@ fn get_local_graph(
     "Where" => Ok(WhereLayer::graph(&input_shapes, &node_constants, &node_attributes)),
     "Expand" => Ok(ExpandLayer::graph(&input_shapes, &node_constants, &node_attributes)),
     "Softmax" => Ok(SoftmaxLayer::graph(&input_shapes, &node_constants, &node_attributes)),
+    "Squeeze" => Ok(SqueezeLayer::graph(&input_shapes, &node_constants, &node_attributes)),
+    "Unsqueeze" => Ok(UnsqueezeLayer::graph(&input_shapes, &node_constants, &node_attributes)),
     "Erf" => Ok(ErfLayer::graph(&input_shapes, &node_constants, &node_attributes)),
     _ => Err(format!("Unsupported onnx operation: {op}")),
   }
