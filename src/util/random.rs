@@ -1,6 +1,6 @@
 /*
  * Random utilities:
- * The functions are used for adding randomness to the RNG and 
+ * The functions are used for adding randomness to the RNG and
  * setting the random device for GPU computations.
  */
 #![allow(unused_imports)]

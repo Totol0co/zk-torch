@@ -1,6 +1,6 @@
 /*
  * Verifier utilities:
- * The functions are used for verification-related operations, such as 
+ * The functions are used for verification-related operations, such as
  * an algorithm for combining pairing checks.
  */
 use crate::util::msm;

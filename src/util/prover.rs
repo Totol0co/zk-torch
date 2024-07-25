@@ -1,6 +1,6 @@
 /*
  * Prover utilities:
- * The functions are used for proving-related operations, such as 
+ * The functions are used for proving-related operations, such as
  * generating CQ tables and converting them to Data (generating commitment).
  */
 use crate::{BasicBlock, Data, SRS};

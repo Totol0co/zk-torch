@@ -1,6 +1,6 @@
 /*
  * Shape utilities:
- * The functions are used for shape-related operations, such as 
+ * The functions are used for shape-related operations, such as
  * slicing and padding arrays.
  */
 use ark_bn254::Fr;
