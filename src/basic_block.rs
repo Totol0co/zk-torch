@@ -21,7 +21,7 @@ use ndarray::{ArrayD, IxDyn};
 pub use ops::*;
 pub use permute::PermuteBasicBlock;
 use rand::{rngs::StdRng, SeedableRng};
-pub use range::RangeBasicBlock;
+pub use range::RangeConstBasicBlock;
 use rayon::prelude::*;
 pub use repeater::RepeaterBasicBlock;
 pub use reshape::ReshapeBasicBlock;
