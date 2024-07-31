@@ -5,6 +5,7 @@ use crate::util;
 use ark_bn254::Fr;
 use ark_std::Zero;
 use ndarray::{arr1, ArrayD};
+use pool::MaxPoolLayer;
 use std::collections::HashMap;
 use tract_onnx::pb;
 use tract_onnx::pb::AttributeProto;
@@ -173,6 +174,7 @@ fn get_local_graph(
     "Unsqueeze" => Ok(UnsqueezeLayer::graph(&input_shapes, &node_constants, &node_attributes)),
     "Erf" => Ok(ErfLayer::graph(&input_shapes, &node_constants, &node_attributes)),
     "Conv" => Ok(ConvLayer::graph(&input_shapes, &node_constants, &node_attributes)),
+    "MaxPool" => Ok(MaxPoolLayer::graph(&input_shapes, &node_constants, &node_attributes)),
     "Xor" => Ok(XorLayer::graph(&input_shapes, &node_constants, &node_attributes)),
     _ => Err(format!("Unsupported onnx operation: {op}")),
   }

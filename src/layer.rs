@@ -57,6 +57,7 @@ pub mod mul;
 pub mod neg;
 pub mod nonlinear;
 pub mod not;
+pub mod pool;
 pub mod pow;
 pub mod range;
 pub mod reducemean;
