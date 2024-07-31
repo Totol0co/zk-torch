@@ -34,6 +34,7 @@ pub use squeeze::{SqueezeLayer, UnsqueezeLayer};
 pub use tile::TileLayer;
 use tract_onnx::pb::AttributeProto;
 pub use transpose::TransposeLayer;
+pub use xor::XorLayer;
 
 pub mod and;
 pub mod arithmetic;
@@ -67,6 +68,7 @@ pub mod squeeze;
 pub mod tile;
 pub mod transpose;
 pub mod r#where;
+pub mod xor;
 
 pub trait Layer {
   fn graph(input_shapes: &Vec<&Vec<usize>>, constants: &Vec<Option<&ArrayD<Fr>>>, attributes: &Vec<&AttributeProto>) -> (Graph, Vec<Vec<usize>>);
