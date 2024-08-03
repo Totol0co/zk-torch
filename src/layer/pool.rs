@@ -3,13 +3,10 @@ use crate::graph::*;
 use crate::layer::conv::{out_hw, reshape_permutation, splat_pad};
 use crate::layer::Layer;
 use crate::onnx;
-use crate::util::pad;
+use crate::util::{max_padding_partitions, pad};
 use ark_bn254::Fr;
-use ark_std::Zero;
 use copy_constraint::zero_padding_partition;
-use ndarray::Axis;
 use ndarray::{arr1, indices, ArrayD, Dim, Dimension, IxDyn};
-use std::collections::BTreeMap;
 use tract_onnx::pb::AttributeProto;
 
 // This constructs the permutation for CopyConstraintBasicBlock to be inputted into MaxProofBasicBlock. The output is a (product of output dims of the pool operation * input channels X product of kernel_dims) permutation where the rows correspond to one max operation, and each row contains the set of arguments to max.
@@ -46,37 +43,6 @@ fn splat_input(input_shape: &Vec<usize>, strides: &Vec<usize>, pads: &Vec<usize>
     }
   }
   inp_cells
-}
-
-// Returns the padding partition where the non-zero padding value consists of all pad indices such that the last-axis subview containing it contains non-pad elements, and the zero padding value consists of all pad indices part of a last-axis subview containing only pad elements.
-fn max_padding_partitions(permutation: &ArrayD<Option<IxDyn>>, nonzero_val: Fr) -> BTreeMap<Fr, Vec<IxDyn>> {
-  let mut zero_indices = vec![];
-  let mut nonzero_indices = vec![];
-  for (i, subview) in permutation.axis_iter(Axis(permutation.ndim() - 1)).enumerate() {
-    if subview.iter().all(|x| x.is_none()) {
-      for (idx, _) in subview.indexed_iter() {
-        let mut full_idx = idx.as_array_view().to_vec();
-        full_idx.push(i);
-        zero_indices.push(IxDyn(&full_idx));
-      }
-    } else {
-      for (idx, val) in subview.indexed_iter() {
-        if val.is_none() {
-          let mut full_idx = idx.as_array_view().to_vec();
-          full_idx.push(i);
-          nonzero_indices.push(IxDyn(&full_idx));
-        }
-      }
-    }
-  }
-  let mut partitions = BTreeMap::new();
-  if zero_indices.len() > 0 {
-    partitions.insert(Fr::zero(), zero_indices);
-  }
-  if nonzero_indices.len() > 0 {
-    partitions.insert(nonzero_val, nonzero_indices);
-  }
-  partitions
 }
 
 pub struct MaxPoolLayer;
