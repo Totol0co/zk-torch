@@ -7,7 +7,7 @@ pub use clip::ClipLayer;
 pub use concat::ConcatLayer;
 pub use constantofshape::ConstOfShapeLayer;
 pub use conv::ConvLayer;
-pub use div::DivLayer;
+pub use div::{DivLayer, ModLayer};
 pub use einsum::EinsumLayer;
 pub use equal::EqualLayer;
 pub use expand::ExpandLayer;
