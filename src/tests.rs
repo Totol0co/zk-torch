@@ -7,8 +7,8 @@ use ark_std::UniformRand;
 use ark_std::{One, Zero};
 use copy_constraint::zero_padding_partition;
 use ndarray::{arr0, concatenate, s, ArrayD, Axis, IxDyn};
-use std::collections::{BTreeMap, HashMap};
 use rand::{rngs::StdRng, Rng, SeedableRng};
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
 fn testBasicBlock<BB: BasicBlock>(basic_block: BB, srs: &SRS, model: &ArrayD<Fr>, inputs: &Vec<&ArrayD<Fr>>) {
@@ -120,7 +120,18 @@ fn testBasicBlocks() {
 
   // generate booleans
   let a = ArrayD::from_shape_fn(IxDyn(&[4]), |_| Fr::from(rng.gen_range(0..2)));
-  testBasicBlock(BooleanCheckBasicBlock {}, srs, &empty, &vec![&a])
+  testBasicBlock(BooleanCheckBasicBlock {}, srs, &empty, &vec![&a]);
+
+  // test TopK
+  let a = ArrayD::from_shape_vec(IxDyn(&[4]), vec![3, 4, 7, 1].into_iter().map(|x| Fr::from(x)).collect()).unwrap();
+  let a_idx = ArrayD::from_shape_vec(IxDyn(&[4]), vec![0, 1, 2, 3].into_iter().map(|x| Fr::from(x)).collect()).unwrap();
+  testBasicBlock(SortBasicBlock { descending: true, len: 4 }, srs, &empty, &vec![&a, &a_idx]);
+  let a = ArrayD::from_shape_vec(IxDyn(&[4]), vec![1, 2, 3, 4].into_iter().map(|x| Fr::from(x)).collect()).unwrap();
+  let a_ind = ArrayD::from_shape_vec(IxDyn(&[4]), vec![0, 1, 2, 3].into_iter().map(|x| Fr::from(x)).collect()).unwrap();
+  let b = ArrayD::from_shape_vec(IxDyn(&[4]), vec![4, 3, 2, 1].into_iter().map(|x| Fr::from(x)).collect()).unwrap();
+  let b_ind = ArrayD::from_shape_vec(IxDyn(&[4]), vec![3, 2, 1, 0].into_iter().map(|x| Fr::from(x)).collect()).unwrap();
+  testBasicBlock(OneToOneBasicBlock {}, srs, &empty, &vec![&a, &a_ind, &b, &b_ind]);
+  testBasicBlock(OrderedBasicBlock {}, srs, &empty, &vec![&b]);
 }
 
 #[test]
