@@ -6,7 +6,7 @@ use crate::util::{max_padding_partitions, pad_to_pow_of_two};
 use ark_bn254::Fr;
 use copy_constraint::zero_padding_partition;
 use ndarray::{concatenate, indices, ArrayD, Axis, Dim, Dimension, IxDyn};
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use tract_onnx::pb::AttributeProto;
 
 // Returns the splat needed to pass into MaxProofBasicBlock. This produces a (product of input dims X 2) permutation where the first column corresponds to the input elements and the second column contains cmp_val
@@ -78,7 +78,7 @@ impl Layer for MinLayer {
       let extend_second_input = graph.addBB(Box::new(CopyConstraintBasicBlock {
         permutation: extended_second_input,
         input_dim: IxDyn(&[1]),
-        padding_partitions: BTreeMap::new(),
+        padding_partitions: HashMap::new(),
       }));
 
       let concat_inputs = graph.addBB(Box::new(ConcatBasicBlock { axis: 0 }));
@@ -94,7 +94,7 @@ impl Layer for MinLayer {
       let cc = graph.addBB(Box::new(CopyConstraintBasicBlock {
         permutation,
         input_dim: IxDyn(&concat_shape),
-        padding_partitions: BTreeMap::new(),
+        padding_partitions: HashMap::new(),
       }));
 
       let neg = graph.addBB(Box::new(RepeaterBasicBlock {
