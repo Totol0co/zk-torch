@@ -2,7 +2,7 @@ use crate::basic_block::*;
 use crate::graph::*;
 use crate::layer::{conv::reshape_permutation, Layer};
 use crate::onnx;
-use crate::util::{max_padding_partitions, pad_to_pow_of_two};
+use crate::util;
 use ark_bn254::Fr;
 use copy_constraint::zero_padding_partition;
 use ndarray::{concatenate, indices, ArrayD, Axis, Dim, Dimension, IxDyn};
@@ -14,7 +14,7 @@ fn splat_input(input_shape: &Vec<usize>, cmp_val: Option<IxDyn>) -> ArrayD<Optio
   let inp_shape = Dim(IxDyn(input_shape));
   let inp = ArrayD::from_shape_vec(inp_shape.clone(), indices(inp_shape).into_iter().map(|x| Some(x.into_dyn())).collect()).unwrap();
   let inp = inp.into_shape(IxDyn(&[input_shape.iter().product(), 1])).unwrap();
-  let inp_pad = pad_to_pow_of_two(&inp, &cmp_val);
+  let inp_pad = util::pad_to_pow_of_two(&inp, &cmp_val);
   let second_col = ArrayD::from_elem(inp_pad.shape(), cmp_val);
   concatenate(Axis(1), &[inp_pad.view(), second_col.view()]).unwrap()
 }
@@ -28,7 +28,7 @@ impl Layer for MaxLayer {
       let constant = constants[1].unwrap().first().unwrap();
       let permutation = splat_input(&input_shapes[0], None);
       let input_shape_padded: Vec<_> = input_shapes[0].iter().map(|i| i.next_power_of_two()).collect();
-      let padding_partitions = max_padding_partitions(&permutation, *constant);
+      let padding_partitions = util::max_padding_partitions(&permutation, *constant);
       let cc = graph.addBB(Box::new(CopyConstraintBasicBlock {
         permutation,
         input_dim: IxDyn(&input_shape_padded),
