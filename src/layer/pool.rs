@@ -66,15 +66,18 @@ impl Layer for MaxPoolLayer {
     let permutation = splat_input(&input_shapes[0], &strides, &pads, ch, &kernel_shape);
     let permutation_padded = splat_pad(&permutation);
     let input_shape_padded: Vec<_> = input_shapes[0].iter().map(|i| i.next_power_of_two()).collect();
+
     let cc = graph.addBB(Box::new(CopyConstraintBasicBlock {
       permutation: permutation_padded,
       input_dim: IxDyn(&input_shape_padded),
-      padding_partition: copy_constraint::PaddingEnum::Max(Fr::from(onnx::CQ_RANGE_LOWER)),
+      padding_partition: copy_constraint::PaddingEnum::Max(Fr::from(*onnx::CQ_RANGE_LOWER)),
     }));
 
     // Prove max over each row
     let max = graph.addBB(Box::new(RepeaterBasicBlock {
-      basic_block: Box::new(MaxProofBasicBlock {}),
+      basic_block: Box::new(MaxProofBasicBlock {
+        cq_range_lower: *onnx::CQ_RANGE_LOWER,
+      }),
       N: 1,
     }));
 
@@ -94,7 +97,7 @@ impl Layer for MaxPoolLayer {
       padding_partition: copy_constraint::PaddingEnum::Zero,
     }));
 
-    let r: Vec<_> = (0..-onnx::CQ_RANGE_LOWER).map(Fr::from).collect();
+    let r: Vec<_> = (0..-*onnx::CQ_RANGE_LOWER).map(Fr::from).collect();
     let range_check = graph.addBB(Box::new(RepeaterBasicBlock {
       basic_block: Box::new(CQBasicBlock { setup: arr1(&r) }),
       N: 1,

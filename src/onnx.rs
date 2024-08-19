@@ -2,9 +2,11 @@ use crate::basic_block::*;
 use crate::graph::*;
 use crate::layer::*;
 use crate::util;
+use crate::CONFIG;
 use ark_bn254::Fr;
 use ark_std::Zero;
 use ndarray::{arr1, ArrayD};
+use once_cell::sync::Lazy;
 use pool::MaxPoolLayer;
 use std::collections::HashMap;
 use tract_onnx::pb;
@@ -12,11 +14,11 @@ use tract_onnx::pb::AttributeProto;
 use tract_onnx::prelude::{DatumType, Framework};
 use tract_onnx::tensor::load_tensor;
 
-pub const SF_LOG: usize = 3; //9
-pub const SF: usize = 1 << SF_LOG;
-pub const SF_FLOAT: f32 = (1 << SF_LOG) as f32;
-pub const CQ_RANGE: usize = 1 << 6; //12
-pub const CQ_RANGE_LOWER: i32 = -(1 << 5);
+pub static SF_LOG: Lazy<usize> = Lazy::new(|| CONFIG.sf.scale_factor_log);
+pub static SF: Lazy<usize> = Lazy::new(|| 1 << *SF_LOG);
+pub static SF_FLOAT: Lazy<f32> = Lazy::new(|| (1 << *SF_LOG) as f32);
+pub static CQ_RANGE: Lazy<usize> = Lazy::new(|| 1 << CONFIG.sf.cq_range_log);
+pub static CQ_RANGE_LOWER: Lazy<i32> = Lazy::new(|| -(1 << CONFIG.sf.cq_range_lower_log));
 
 // This function is used for parsing the inputs of onnx models
 fn parse_onnx_inputs(onnx_graph: &pb::GraphProto) -> (HashMap<String, usize>, HashMap<String, Vec<usize>>) {
@@ -80,7 +82,7 @@ fn parse_onnx_constants<'a>(
             // the reason we use 1 here is because it is the smallest positive value that can be represented in the field
             return Fr::from(1);
           }
-          let mut y = (*x * SF_FLOAT).round();
+          let mut y = (*x * *SF_FLOAT).round();
           y = y.clamp(-(1 << 15) as f32, (1 << 15) as f32);
           Fr::from(y as i32)
         }))
