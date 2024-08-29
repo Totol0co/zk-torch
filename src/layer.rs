@@ -85,10 +85,12 @@ pub mod transpose;
 pub mod r#where;
 pub mod xor;
 
+// Most output types will only depend on an input type but for e.g., Range layer depends on the type of the constants
 pub trait Layer {
   fn graph(
     input_shapes: &Vec<&Vec<usize>>,
+    input_types: &Vec<DatumType>,
     constants: &Vec<Option<(&ArrayD<Fr>, DatumType)>>,
     attributes: &Vec<&AttributeProto>,
-  ) -> (Graph, Vec<Vec<usize>>);
+  ) -> (Graph, Vec<Vec<usize>>, Vec<DatumType>);
 }
