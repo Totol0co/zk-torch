@@ -32,13 +32,15 @@ impl Layer for GatherLayer {
     _attributes: &Vec<&AttributeProto>,
   ) -> (Graph, Vec<Vec<usize>>, Vec<DatumType>) {
     let mut graph = Graph::new();
-    let mut indices_output = -2;
-    if input_shapes[1].len() == 0 {
-      let indices = graph.addBB(Box::new(Const2BasicBlock {
-        c: constants[1].unwrap().0.clone(),
-      }));
-      indices_output = graph.addNode(indices, vec![]);
-    }
+    let indices = constants[1].unwrap().0.mapv(|x| {
+      if x > Fr::from(input_shapes[0][0] as i64) {
+        Fr::from(input_shapes[0][0] as i64) + x
+      } else {
+        x
+      }
+    });
+    let indices = graph.addBB(Box::new(Const2BasicBlock { c: indices }));
+    let indices_output = graph.addNode(indices, vec![]);
     let gather = graph.addBB(Box::new(GatherBasicBlock {}));
     let output = graph.addNode(gather, vec![(-1, 0), (indices_output, 0)]);
     graph.outputs.push((output, 0));
