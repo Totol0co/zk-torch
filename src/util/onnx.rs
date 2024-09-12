@@ -72,12 +72,14 @@ pub fn datatype_to_datumtype(t: i32) -> DatumType {
   }
 }
 
+// Converts DatumType to the corresponding scale factor
+// It should only be used in the IN_SF/OUT_SF of nonlinear basicblocks
 pub fn datumtype_to_sf(t: DatumType) -> usize {
   match t {
     DatumType::I32 => 1,
     DatumType::I64 => 1,
     DatumType::Bool => 1,
-    DatumType::F32 => *onnx::SF,
+    DatumType::F32 => *onnx::SF_LOG,
     _ => panic!("DatumType {:?} not supported", t),
   }
 }
