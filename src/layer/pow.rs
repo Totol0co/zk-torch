@@ -17,15 +17,15 @@ pub struct PrecomputedPowBasicBlock {
 }
 impl BasicBlock for PrecomputedPowBasicBlock {
   fn run(&self, _model: &ArrayD<Fr>, inputs: &Vec<&ArrayD<Fr>>) -> Result<Vec<ArrayD<Fr>>, util::CQOutOfRangeError> {
-    let base = util::fr_to_int(*inputs[0].first().unwrap()) as f32;
+    let base = util::fr_to_int(*inputs[0].first().unwrap()) as f64;
     let shape = inputs[1].shape();
     let out = util::array_into_iter(inputs[1])
       .map(|x| {
         let mut b = base;
-        b /= (1 << self.input_SF) as f32;
-        b = b.powi(util::fr_to_int(*x));
-        b *= (1 << self.output_SF) as f32;
-        Fr::from(b.round() as i32)
+        b /= (1 << self.input_SF) as f64;
+        b = b.powi(util::fr_to_int(*x).try_into().unwrap());
+        b *= (1 << self.output_SF) as f64;
+        Fr::from(b.round() as i64)
       })
       .collect::<Vec<_>>();
     Ok(vec![ArrayD::from_shape_vec(shape, out).unwrap()])
@@ -80,7 +80,7 @@ impl Layer for PowLayer {
     assert!(constants[1].unwrap().0.len() == 1);
     let N = match constants[1].unwrap().1 {
       DatumType::I32 | DatumType::I64 => util::fr_to_int(*constants[1].unwrap().0.first().unwrap()),
-      DatumType::F32 => (util::fr_to_int(*constants[1].unwrap().0.first().unwrap()) as f32 / sf_float) as i32,
+      DatumType::F32 => (util::fr_to_int(*constants[1].unwrap().0.first().unwrap()) as f32 / sf_float) as i128,
       _ => panic!("unsupported type"),
     };
 

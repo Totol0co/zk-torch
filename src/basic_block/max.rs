@@ -19,7 +19,8 @@ impl BasicBlock for MaxBasicBlock {
   fn run(&self, _model: &ArrayD<Fr>, inputs: &Vec<&ArrayD<Fr>>) -> Result<Vec<ArrayD<Fr>>, util::CQOutOfRangeError> {
     assert!(inputs.len() == 1);
     Ok(vec![arr1(&[inputs[0].fold(Fr::zero(), |max, x| {
-      if *x < Fr::from(1 << 28) && *x > max {
+      let a: i128 = 1;
+      if *x < Fr::from(a << 127) && *x > max {
         return *x;
       } else {
         return max;
@@ -31,7 +32,7 @@ impl BasicBlock for MaxBasicBlock {
 
 #[derive(Debug)]
 pub struct MaxProofBasicBlock {
-  pub cq_range_lower: i32,
+  pub cq_range_lower: i128,
 }
 
 // This max includes a proof. The first output is the max and second output is a vector of max - x for all input values x. The second output is needed because it is necessary to perform a range check on the second output.
