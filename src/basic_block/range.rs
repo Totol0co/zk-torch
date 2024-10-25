@@ -49,6 +49,7 @@ impl BasicBlock for RangeConstBasicBlock {
     Ok(vec![arr1(&r).into_dyn()])
   }
 
+  #[cfg(not(feature = "mock_prove"))]
   fn setup(&self, srs: &SRS, _model: &ArrayD<Data>) -> (Vec<G1Projective>, Vec<G2Projective>, Vec<DensePolynomial<Fr>>) {
     let element_num = max(0, ((self.limit - self.start) + self.delta - 1) / self.delta);
     let element_num_pad = util::next_pow(element_num as u32) as usize;
@@ -66,6 +67,12 @@ impl BasicBlock for RangeConstBasicBlock {
     let range_poly = DensePolynomial::from_coefficients_vec(domain.ifft(&r));
     let range_x = util::msm::<G1Projective>(&srs.X1A, &range_poly.coeffs);
     (vec![range_x], vec![], vec![])
+  }
+
+  #[cfg(feature = "mock_prove")]
+  fn setup(&self, srs: &SRS, _model: &ArrayD<Data>) -> (Vec<G1Projective>, Vec<G2Projective>, Vec<DensePolynomial<Fr>>) {
+    eprintln!("\x1b[93mWARNING\x1b[0m: MockSetup is enabled. This is only for testing purposes.");
+    (vec![srs.X1P[0].clone()], vec![], vec![])
   }
 
   fn prove(

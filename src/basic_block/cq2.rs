@@ -50,6 +50,7 @@ impl BasicBlock for CQ2BasicBlock {
     Ok(vec![])
   }
 
+  #[cfg(not(feature = "mock_prove"))]
   fn setup(&self, srs: &SRS, model: &ArrayD<Data>) -> (Vec<G1Projective>, Vec<G2Projective>, Vec<DensePolynomial<Fr>>) {
     assert!(model.ndim() == 1 && model.len() == 2);
     let N = model[0].raw.len();
@@ -81,6 +82,28 @@ impl BasicBlock for CQ2BasicBlock {
     let temp = srs.X1P[N - 1] * Fr::from(N as u64).inverse().unwrap();
     L_i_0_x_1.par_iter_mut().for_each(|x| *x -= temp);
 
+    setup.extend(L_i_x_1);
+    setup.extend(L_i_0_x_1);
+    return (setup, setup2, Vec::new());
+  }
+
+  #[cfg(feature = "mock_prove")]
+  fn setup(&self, srs: &SRS, model: &ArrayD<Data>) -> (Vec<G1Projective>, Vec<G2Projective>, Vec<DensePolynomial<Fr>>) {
+    eprintln!("\x1b[93mWARNING\x1b[0m: MockSetup is enabled. This is only for testing purposes.");
+    assert!(model.ndim() == 1 && model.len() == 2);
+    let N = model[0].raw.len();
+    let mut setup = vec![];
+    let mut setup2 = vec![];
+    for i in 0..2 {
+      setup2.push(srs.X2P[i]);
+    }
+    let Q_i_x_1_A = srs.X1P[..N].to_vec();
+    let Q_i_x_1_B = srs.X1P[..N].to_vec();
+    let L_i_x_1 = srs.X1P[..N].to_vec();
+    let L_i_0_x_1 = srs.X1P[..N].to_vec();
+
+    setup.extend(Q_i_x_1_A);
+    setup.extend(Q_i_x_1_B);
     setup.extend(L_i_x_1);
     setup.extend(L_i_0_x_1);
     return (setup, setup2, Vec::new());

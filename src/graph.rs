@@ -141,6 +141,7 @@ impl Graph {
         println!("setting up {:?} {:?}", i, b);
         let bb_name = format!("{b:?}");
         let save_cq_layer_setup = CONFIG.prover.enable_layer_setup && (bb_name.contains("CQ2BasicBlock") || bb_name.contains("CQBasicBlock"));
+        #[cfg(not(feature = "mock_prove"))]
         if save_cq_layer_setup {
           let file_name = format!("{}.setup", util::hash_str(&format!("{bb_name:?}")));
           let file_path = format!("{}/{}", *LAYER_SETUP_DIR, file_name);
@@ -154,6 +155,7 @@ impl Graph {
         }
         let setup = b.setup(srs, *m);
         let setups = vec![setup];
+        #[cfg(not(feature = "mock_prove"))]
         if save_cq_layer_setup {
           let file_name = format!("{}.setup", util::hash_str(&format!("{bb_name:?}")));
           let file_path = format!("{}/{}", *LAYER_SETUP_DIR, file_name);
@@ -298,6 +300,16 @@ impl Graph {
 
     self.nodes.iter().enumerate().for_each(|(i, n)| {
       println!("verifying (debug mode) {i} {:?}", self.basic_blocks[n.basic_block]);
+      let precomputable = self.precomputable.prove_and_verify[i];
+      if precomputable {
+        // Skip verifying for some layers if they are precomputable.
+        // These layers require no proving and verifying as their inputs are known (i.e., constants) during graph construction.
+        println!(
+          "{} | skipping verifying for {i} {:?} because this layer is precomputable given the constant inputs",
+          self.layer_names[i], self.basic_blocks[n.basic_block]
+        );
+        return;
+      }
       let myInputs = n
         .inputs
         .iter()
@@ -309,7 +321,6 @@ impl Graph {
           }
         })
         .collect();
-      let precomputable = self.precomputable.prove_and_verify[i];
       if !precomputable {
         let pairings = self.basic_blocks[n.basic_block].verify(srs, models[n.basic_block], &myInputs, outputs[i], proofs[i], rng, cache.clone());
         let mut bytes = Vec::new();

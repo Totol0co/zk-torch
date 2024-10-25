@@ -45,6 +45,7 @@ impl BasicBlock for CQLinBasicBlock {
     }
   }
 
+  #[cfg(not(feature = "mock_prove"))]
   fn setup(&self, srs: &SRS, model: &ArrayD<Data>) -> (Vec<G1Projective>, Vec<G2Projective>, Vec<DensePolynomial<Fr>>) {
     let m = model.len();
     let n = model[0].raw.len();
@@ -114,6 +115,32 @@ impl BasicBlock for CQLinBasicBlock {
     util::fft_in_place(domain_m, &mut temp);
     let mut Q: Vec<_> = (0..m).into_par_iter().map(|i| temp[i] * domain_m.element(i) * m_inv).collect();
     let M_x = (0..m).into_par_iter().map(|i| (0..n).map(|j| U2[i][j] * model[i].raw[j]).sum::<G2Projective>()).sum::<G2Projective>(); // TODO: Change to msm
+
+    let mut setup = R;
+    setup.append(&mut Q);
+    setup.append(&mut S);
+    setup.append(&mut P_R);
+    setup.append(&mut L_V_i_x_n);
+    setup.append(&mut L_V_i_x);
+    setup.append(&mut L_H_i_x);
+    (setup, vec![M_x.into()], Vec::new())
+  }
+
+  #[cfg(feature = "mock_prove")]
+  fn setup(&self, srs: &SRS, model: &ArrayD<Data>) -> (Vec<G1Projective>, Vec<G2Projective>, Vec<DensePolynomial<Fr>>) {
+    eprintln!("\x1b[93mWARNING\x1b[0m: MockSetup is enabled. This is only for testing purposes.");
+    let m = model.len();
+    let n = model[0].raw.len();
+
+    let mut L_H_i_x = srs.X1P[..n].to_vec();
+    let mut L_V_i_x_n: Vec<_> = srs.X1P[..m].into_par_iter().map(|x| (*x).into()).collect();
+    let mut L_V_i_x: Vec<G1Projective> = srs.X1P[..m].into_par_iter().map(|x| (*x).into()).collect();
+    let R: Vec<_> = L_V_i_x.iter().map(|x| *x).collect();
+    let mut Q: Vec<_> = L_V_i_x.iter().map(|x| *x).collect();
+    let mut S: Vec<_> = L_V_i_x.iter().map(|x| *x).collect();
+    let mut P_R: Vec<_> = L_V_i_x.iter().map(|x| *x).collect();
+
+    let M_x = srs.X2P[0].clone();
 
     let mut setup = R;
     setup.append(&mut Q);
