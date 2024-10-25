@@ -10,7 +10,7 @@ use ndarray::{arr1, arr2, ArrayD, Ix1, Ix2, IxDyn};
 use rand::{rngs::StdRng, SeedableRng};
 use rayon::iter::ParallelIterator;
 
-fn index<'a, T>(A: &'a ArrayD<T>, i: usize) -> &T {
+fn index<'a, T>(A: &'a ArrayD<T>, i: usize) -> &'a T {
   if i == 0 {
     A.first().unwrap()
   } else {
