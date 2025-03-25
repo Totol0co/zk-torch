@@ -146,8 +146,9 @@ impl Layer for BatchNormLayer {
     let two_const = graph.addBB(Box::new(Const2BasicBlock {
       c: arr1(&vec![Fr::from(2)]).into_dyn(),
     }));
+    let len = util::next_pow(input_shapes[0][input_shapes[0].len() - 1] as u32) as usize;
     let mul = graph.addBB(Box::new(RepeaterBasicBlock {
-      basic_block: Box::new(MulBasicBlock {}),
+      basic_block: Box::new(MulBasicBlock { len }),
       N: 1,
     }));
     let mul_scalar = graph.addBB(Box::new(RepeaterBasicBlock {
@@ -295,11 +296,8 @@ impl Layer for InstanceNormLayer {
     epsilon *= onnx::SF_FLOAT.read().unwrap().to_owned();
 
     // X_shape_for_mean: [N, C, D1 * D2 * ... * DN]
-    let x_shape_for_mean = vec![
-      X_shape[0],
-      X_shape[1],
-      X_shape.into_iter().skip(2).cloned().collect::<Vec<_>>().iter().fold(1, |x, &y| x * y),
-    ];
+    let len = X_shape.into_iter().skip(2).cloned().collect::<Vec<_>>().iter().fold(1, |x, &y| x * y);
+    let x_shape_for_mean = vec![X_shape[0], X_shape[1], len];
     let permutation = get_reshape_indices(X_shape.to_vec(), x_shape_for_mean);
     let padded_input_shape: Vec<_> = X_shape.iter().map(|x| util::next_pow(*x as u32) as usize).collect();
     let cc = graph.addBB(Box::new(CopyConstraintBasicBlock {
@@ -308,8 +306,9 @@ impl Layer for InstanceNormLayer {
       padding_partition: copy_constraint::PaddingEnum::Zero,
     }));
 
+    let len = util::next_pow(len as u32) as usize;
     let sum = graph.addBB(Box::new(RepeaterBasicBlock {
-      basic_block: Box::new(SumBasicBlock {}),
+      basic_block: Box::new(SumBasicBlock { len }),
       N: 1,
     }));
     let div_const = graph.addBB(Box::new(DivConstProofBasicBlock {
@@ -344,8 +343,9 @@ impl Layer for InstanceNormLayer {
     let reshape_2 = graph.addBB(Box::new(ReshapeBasicBlock {
       shape: vec![scale_shape_padded].into_iter().chain(vec![1; num_one]).collect(),
     }));
+    let len = util::next_pow(input_shapes[0][input_shapes[0].len() - 1] as u32) as usize;
     let mul = graph.addBB(Box::new(RepeaterBasicBlock {
-      basic_block: Box::new(MulBasicBlock {}),
+      basic_block: Box::new(MulBasicBlock { len }),
       N: 1,
     }));
     let sub = graph.addBB(Box::new(RepeaterBasicBlock {
