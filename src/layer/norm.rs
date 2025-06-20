@@ -829,7 +829,10 @@ impl Layer for CustomInstanceNormLayer {
 
     let split_ind = vec![1; util::next_pow(scale_shape[0] as u32) as usize];
     let split_x = graph.addBB(Box::new(SplitBasicBlock { axis: 1, split: split_ind }));
-    let concat = graph.addBB(Box::new(ConcatBasicBlock { axis: 1 }));
+    let concat = graph.addBB(Box::new(ConcatBasicBlock {
+      axis: 1,
+      input_shapes: vec![vec![X_shape[0], 1, util::next_pow(X_shape[2] as u32) as usize]; util::next_pow(X_shape[1] as u32) as usize],
+    }));
     let unsqueeze = graph.addBB(Box::new(UnsqueezeBasicBlock {}));
 
     // Step 0. Compute epsilon, mean, var, scale, and bias
