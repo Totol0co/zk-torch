@@ -1,3 +1,4 @@
+
 use crate::basic_block::*;
 use crate::graph::*;
 use crate::layer::*;
@@ -17,11 +18,11 @@ use tract_onnx::prelude::Datum;
 use tract_onnx::prelude::{DatumType, Framework};
 use tract_onnx::tensor::load_tensor;
 
-pub static SF_LOG: Lazy<RwLock<usize>> = Lazy::new(|| RwLock::new(CONFIG.sf.scale_factor_log));
+pub static SF_LOG: Lazy<RwLock<usize>> = Lazy::new(|| RwLock::new(CONFIG.get().unwrap().sf.scale_factor_log));
 pub static SF: Lazy<RwLock<usize>> = Lazy::new(|| RwLock::new(1 << SF_LOG.read().unwrap().to_owned()));
 pub static SF_FLOAT: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new((1 << SF_LOG.read().unwrap().to_owned()) as f32));
-pub static CQ_RANGE: Lazy<usize> = Lazy::new(|| 1 << CONFIG.sf.cq_range_log);
-pub static CQ_RANGE_LOWER: Lazy<i128> = Lazy::new(|| -(1 << CONFIG.sf.cq_range_lower_log));
+pub static CQ_RANGE: Lazy<usize> = Lazy::new(|| 1 << CONFIG.get().unwrap().sf.cq_range_log);
+pub static CQ_RANGE_LOWER: Lazy<i128> = Lazy::new(|| -(1 << CONFIG.get().unwrap().sf.cq_range_lower_log));
 
 // This function is used for parsing the inputs of onnx models
 fn parse_onnx_inputs(onnx_graph: &pb::GraphProto) -> (HashMap<String, usize>, HashMap<String, Vec<usize>>, HashMap<String, DatumType>) {
@@ -441,6 +442,21 @@ pub fn load_file(filename: &str) -> (Graph, Vec<(ArrayD<Fr>, DatumType)>) {
       &mut basic_blocks_idx,
     );
   }
+    // === PATCH: Fill graph.outputs from ONNX graph outputs ===
+  println!("WIRING ONNX OUTPUTS → graph.outputs");
+
+  for onnx_out in onnx_graph.output.iter() {
+      let name = &onnx_out.name;
+      if let Some(pairs) = outputs_idx.get(name) {
+          for (node_idx, out_idx) in pairs {
+              println!(" -> Output '{}' mapped to (node {}, output {})", name, node_idx, out_idx);
+              graph.outputs.push((*node_idx, *out_idx));
+          }
+      } else {
+          eprintln!("WARNING: ONNX output '{}' not found in outputs_idx!", name);
+      }
+  }
+  // === END PATCH ===
 
   propagate_precomputable(&mut graph);
 

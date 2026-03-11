@@ -10,3 +10,13 @@ setups
 models
 acc_proofs
 final_proofs
+challenge_0014
+challenge_0020
+challenge_0022
+input_json
+onnx
+del.sh
+fusion_onnx.py
+replace_gemm_with_matmul_add.py
+test_onnx.py
+layer_setup

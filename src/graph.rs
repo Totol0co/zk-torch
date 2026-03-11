@@ -142,11 +142,13 @@ impl Graph {
         }
         println!("setting up {:?} {:?}", i, b);
         let bb_name = format!("{b:?}");
-        let save_cq_layer_setup = CONFIG.prover.enable_layer_setup && (bb_name.contains("CQ2BasicBlock") || bb_name.contains("CQBasicBlock"));
+        
+        let save_cq_layer_setup = CONFIG.get().unwrap().prover.enable_layer_setup && (bb_name.contains("CQ2BasicBlock") || bb_name.contains("CQBasicBlock"));
+
         #[cfg(not(feature = "mock_prove"))]
         if save_cq_layer_setup {
           let file_name = format!("{}.setup", util::hash_str(&format!("{bb_name:?}")));
-          let file_path = format!("{}/{}", *LAYER_SETUP_DIR, file_name);
+          let file_path = format!("{}/{}", LAYER_SETUP_DIR.get().unwrap(), file_name);
           if util::file_exists(&file_path) {
             println!("CQ setup exists: Loading layer setup from file: {}", file_path);
             let setups =
@@ -160,7 +162,7 @@ impl Graph {
         #[cfg(not(feature = "mock_prove"))]
         if save_cq_layer_setup {
           let file_name = format!("{}.setup", util::hash_str(&format!("{bb_name:?}")));
-          let file_path = format!("{}/{}", *LAYER_SETUP_DIR, file_name);
+          let file_path = format!("{}/{}", LAYER_SETUP_DIR.get().unwrap(), file_name);
           setups.serialize_uncompressed(File::create(file_path).unwrap()).unwrap();
         }
         return setups.first().unwrap().clone();

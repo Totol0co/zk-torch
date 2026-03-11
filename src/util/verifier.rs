@@ -105,25 +105,25 @@ pub fn combine_pairing_checks(checks: &Vec<&PairingCheck>) -> (Vec<G1Affine>, Ve
 pub fn verify(srs: &SRS, graph: &Graph, timing: &mut TimingTree) {
   // Read Files:
   let proofs =
-    Vec::<(Vec<G1Affine>, Vec<G2Affine>, Vec<Fr>)>::deserialize_uncompressed_unchecked(File::open(&CONFIG.verifier.proof_path).unwrap()).unwrap();
+    Vec::<(Vec<G1Affine>, Vec<G2Affine>, Vec<Fr>)>::deserialize_uncompressed_unchecked(File::open(&CONFIG.get().unwrap().verifier.proof_path).unwrap()).unwrap();
   let proofs = proofs.iter().map(|x| (&x.0, &x.1, &x.2)).collect();
   #[cfg(feature = "fold")]
   let acc_proofs = Vec::<(Vec<G1Affine>, Vec<G2Affine>, Vec<Fr>, Vec<PairingOutput<Bn<ark_bn254::Config>>>)>::deserialize_uncompressed_unchecked(
-    File::open(&CONFIG.prover.acc_proof_path).unwrap(),
+    File::open(&CONFIG.get().unwrap().prover.acc_proof_path).unwrap(),
   )
   .unwrap();
   #[cfg(feature = "fold")]
   let acc_proofs = acc_proofs.iter().map(|x| (&x.0, &x.1, &x.2, &x.3)).collect();
   let mut modelsEncBytes = Vec::new();
-  File::open(&CONFIG.verifier.enc_model_path).unwrap().read_to_end(&mut modelsEncBytes).unwrap();
+  File::open(&CONFIG.get().unwrap().verifier.enc_model_path).unwrap().read_to_end(&mut modelsEncBytes).unwrap();
   let modelsEnc: Vec<ArrayD<DataEnc>> = bincode::deserialize(&modelsEncBytes).unwrap();
   let modelsEnc: Vec<&ArrayD<DataEnc>> = modelsEnc.iter().map(|model| model).collect();
   let mut inputsEncBytes = Vec::new();
-  File::open(&CONFIG.verifier.enc_input_path).unwrap().read_to_end(&mut inputsEncBytes).unwrap();
+  File::open(&CONFIG.get().unwrap().verifier.enc_input_path).unwrap().read_to_end(&mut inputsEncBytes).unwrap();
   let inputsEnc: Vec<ArrayD<DataEnc>> = bincode::deserialize(&inputsEncBytes).unwrap();
   let inputsEnc: Vec<&ArrayD<DataEnc>> = inputsEnc.iter().map(|input| input).collect();
   let mut outputsEncBytes = Vec::new();
-  File::open(&CONFIG.verifier.enc_output_path).unwrap().read_to_end(&mut outputsEncBytes).unwrap();
+  File::open(&CONFIG.get().unwrap().verifier.enc_output_path).unwrap().read_to_end(&mut outputsEncBytes).unwrap();
   let outputsEnc: Vec<Vec<ArrayD<DataEnc>>> = bincode::deserialize(&outputsEncBytes).unwrap();
   let outputsEnc: Vec<Vec<&ArrayD<DataEnc>>> = outputsEnc.iter().map(|output| output.iter().map(|x| x).collect()).collect();
   let outputsEnc: Vec<&Vec<&ArrayD<DataEnc>>> = outputsEnc.iter().map(|x| x).collect();
@@ -158,6 +158,7 @@ pub fn verify(srs: &SRS, graph: &Graph, timing: &mut TimingTree) {
       graph.verify(srs, &modelsEnc, &inputsEnc, &outputsEnc, &proofs, &acc_proofs, &mut rng, timing)
     );
     let final_proof = graph.fold_proofs(srs, final_proofs_idx, final_acc_proofs_idx, &proofs, &acc_proofs);
-    final_proof.serialize_uncompressed(File::create(&CONFIG.prover.final_proof_path).unwrap()).unwrap();
+    
+    final_proof.serialize_uncompressed(File::create(&CONFIG.get().unwrap().prover.final_proof_path).unwrap()).unwrap();
   }
 }

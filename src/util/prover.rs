@@ -19,6 +19,7 @@ use rayon::range;
 use sha3::{Digest, Keccak256};
 use std::fs::{self, File};
 use std::io::Read;
+use std::time::Instant;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CQArrayType {
@@ -165,9 +166,9 @@ pub fn prove(
   let modelsEncBytes = bincode::serialize(&modelsEnc).unwrap();
   let inputsEncBytes = bincode::serialize(&inputsEnc).unwrap();
   let outputsEncBytes = bincode::serialize(&outputsEnc).unwrap();
-  fs::write(&CONFIG.prover.enc_model_path, &modelsEncBytes).unwrap();
-  fs::write(&CONFIG.prover.enc_input_path, &inputsEncBytes).unwrap();
-  fs::write(&CONFIG.prover.enc_output_path, &outputsEncBytes).unwrap();
+  fs::write(&CONFIG.get().unwrap().prover.enc_model_path, &modelsEncBytes).unwrap();
+  fs::write(&CONFIG.get().unwrap().prover.enc_input_path, &inputsEncBytes).unwrap();
+  fs::write(&CONFIG.get().unwrap().prover.enc_output_path, &outputsEncBytes).unwrap();
 
   // Fiat-Shamir:
   let mut hasher = Keccak256::new();
@@ -184,9 +185,9 @@ pub fn prove(
   #[cfg(not(feature = "fold"))]
   let proofs = timed!(timing, "prove", graph.prove(srs, &setups, &models, &inputs, &outputs, &mut rng, timing));
 
-  proofs.serialize_uncompressed(File::create(&CONFIG.prover.proof_path).unwrap()).unwrap();
+  proofs.serialize_uncompressed(File::create(&CONFIG.get().unwrap().prover.proof_path).unwrap()).unwrap();
   #[cfg(feature = "fold")]
-  acc_proofs.serialize_uncompressed(File::create(&CONFIG.prover.acc_proof_path).unwrap()).unwrap();
+  acc_proofs.serialize_uncompressed(File::create(&CONFIG.get().unwrap().prover.acc_proof_path).unwrap()).unwrap();
 }
 
 #[cfg(not(feature = "mock_prove"))]
@@ -199,7 +200,7 @@ pub fn setup(srs: &SRS, graph: &Graph, models: &Vec<&ArrayD<Fr>>, timing: &mut T
       let bb = &graph.basic_blocks[i];
       let bb_name = format!("{bb:?}");
       let file_name = format!("{}.model", util::hash_str(&format!("{bb_name:?}")));
-      let file_path = format!("{}/{}", *LAYER_SETUP_DIR, file_name);
+      let file_path = format!("{}/{}", LAYER_SETUP_DIR.get().unwrap(), file_name);
       if util::file_exists(&file_path) {
         println!("CQs: Loading layer model from file: {}", file_path);
         let mut modelBytes = Vec::new();
@@ -220,9 +221,9 @@ pub fn setup(srs: &SRS, graph: &Graph, models: &Vec<&ArrayD<Fr>>, timing: &mut T
   let models_ref: Vec<&ArrayD<Data>> = models.iter().map(|model| model).collect();
   let setups = timed!(timing, "setup and encode models", graph.setup(srs, &models_ref));
   // Save files:
-  setups.serialize_uncompressed(File::create(&CONFIG.prover.setup_path).unwrap()).unwrap();
+  setups.serialize_uncompressed(File::create(&CONFIG.get().unwrap().prover.setup_path).unwrap()).unwrap();
   let modelsBytes = bincode::serialize(&models).unwrap();
-  fs::write(&CONFIG.prover.model_path, &modelsBytes).unwrap();
+  fs::write(&CONFIG.get().unwrap().prover.model_path, &modelsBytes).unwrap();
 }
 
 #[cfg(feature = "mock_prove")]
@@ -248,7 +249,7 @@ pub fn setup(
 
 fn load_model() -> Vec<ArrayD<Data>> {
   let mut modelsBytes = Vec::new();
-  File::open(&CONFIG.prover.model_path).unwrap().read_to_end(&mut modelsBytes).unwrap();
+  File::open(&CONFIG.get().unwrap().prover.model_path).unwrap().read_to_end(&mut modelsBytes).unwrap();
   let models: Vec<ArrayD<Data>> = bincode::deserialize(&modelsBytes).unwrap();
   models
 }
@@ -258,10 +259,12 @@ pub fn zktorch_kernel() {
   let mut timing = TimingTree::default();
   env_logger::init();
 
-  let srs = &ptau::load_file(&CONFIG.ptau.ptau_path, CONFIG.ptau.pow_len_log, CONFIG.ptau.loaded_pow_len_log);
-  let onnx_file_name = &CONFIG.onnx.model_path;
+  let srs = &ptau::load_file(  &CONFIG.get().unwrap().ptau.ptau_path,  CONFIG.get().unwrap().ptau.pow_len_log,  CONFIG.get().unwrap().ptau.loaded_pow_len_log );
+
+  let onnx_file_name = &CONFIG.get().unwrap().onnx.model_path;
   let (mut graph, models) = onnx::load_file(onnx_file_name);
-  let input_path = &CONFIG.onnx.input_path;
+  println!("GRAPH OUTPUT NODES = {:?}", graph.outputs);
+  let input_path = &CONFIG.get().unwrap().onnx.input_path;
   let inputs = if std::path::Path::new(input_path).exists() {
     util::load_inputs_from_json_for_onnx(onnx_file_name, input_path)
   } else {
@@ -270,22 +273,23 @@ pub fn zktorch_kernel() {
   let inputs = inputs.iter().map(|x| x).collect();
   let models = models.iter().map(|x| &x.0).collect();
   let outputs = witness_gen(&inputs, &graph, &models, &mut timing);
+  println!("OUTPUTS = {:?}", outputs);
   if outputs.is_err() {
     println!("CQ Error: {:?}", outputs.err().unwrap());
     return;
   }
-
+  let t_setup_start = Instant::now();
   #[cfg(not(feature = "mock_prove"))]
   setup(&srs, &graph, &models, &mut timing);
   #[cfg(feature = "mock_prove")]
   let (setups, models) = setup(&srs, &graph, &models, &mut timing);
 
+  let t_setup = t_setup_start.elapsed();
   // Load model and setup:
   #[cfg(not(feature = "mock_prove"))]
   let setups =
-    Vec::<(Vec<G1Projective>, Vec<G2Projective>, Vec<DensePolynomial<Fr>>)>::deserialize_uncompressed(File::open(&CONFIG.prover.setup_path).unwrap())
-      .unwrap();
-  let setups: Vec<(Vec<G1Affine>, Vec<G2Affine>, Vec<DensePolynomial<Fr>>)> = util::vec_iter(&setups)
+    Vec::<(Vec<G1Projective>, Vec<G2Projective>, Vec<DensePolynomial<Fr>>)>::deserialize_uncompressed(File::open(&CONFIG.get().unwrap().prover.setup_path).unwrap());
+  let setups: Vec<(Vec<G1Affine>, Vec<G2Affine>, Vec<DensePolynomial<Fr>>)> = util::vec_iter(&setups.unwrap())
     .map(|x| {
       (
         util::vec_iter(&x.0).map(|y| (*y).into()).collect(),
@@ -301,18 +305,42 @@ pub fn zktorch_kernel() {
   let models: Vec<&ArrayD<Data>> = models.iter().map(|model| model).collect();
 
   // Prove
+  // -------------------- PROVE TIMER START --------------------
+  let t_prove_start = Instant::now();
+
   prove(&srs, &inputs, outputs.unwrap(), setups, models, &mut graph, &mut timing);
 
-  // Verify
+  // -------------------- PROVE TIMER END ----------------------
+  let t_prove = t_prove_start.elapsed();
+
+  // -------------------- VERIFY TIMER START -------------------
+  let t_verify_start = Instant::now();
+
   verify(&srs, &graph, &mut timing);
 
+  // -------------------- VERIFY TIMER END ---------------------
+  let t_verify = t_verify_start.elapsed();
+
   // Measure proof size
-  measure_file_size(&CONFIG.prover.enc_model_path);
-  measure_file_size(&CONFIG.prover.enc_input_path);
-  measure_file_size(&CONFIG.prover.enc_output_path);
-  measure_file_size(&CONFIG.prover.proof_path);
+  measure_file_size(&CONFIG.get().unwrap().prover.enc_model_path);
+  measure_file_size(&CONFIG.get().unwrap().prover.enc_input_path);
+  measure_file_size(&CONFIG.get().unwrap().prover.enc_output_path);
+  measure_file_size(&CONFIG.get().unwrap().prover.proof_path);
   #[cfg(feature = "fold")]
-  measure_file_size(&CONFIG.prover.final_proof_path);
+  measure_file_size(&CONFIG.get().unwrap().prover.final_proof_path);
+
+  // ---- Résumé clair des temps ----
+  println!();
+  println!("===================== ZK-Torch Timing Summary =====================");
+  println!("Setup  : {:.3} s", t_setup.as_secs_f64());
+  println!("Prove  : {:.3} s", t_prove.as_secs_f64());
+  println!("Verify : {:.3} s", t_verify.as_secs_f64());
+  println!("===================================================================");
+  println!();
+
   timing.print();
   println!("Cargo run was successful.");
+  println!("Cargo run was successful.");
+
 }
+

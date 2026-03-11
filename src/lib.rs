@@ -9,35 +9,30 @@ pub mod ptau;
 #[cfg(test)]
 pub mod tests;
 pub mod util;
+pub mod python; 
 
-use once_cell::sync::Lazy;
 use std::env;
-use std::fs::{self, File};
+use std::{fs, path::Path};
 use std::io::Read;
-use std::path::Path;
+use once_cell::sync::OnceCell;
 
-pub static CONFIG_FILE: Lazy<String> = Lazy::new(|| {
-  let args: Vec<String> = env::args().collect();
-  if args.len() != 2 {
-    panic!("Usage: cargo run -- <config file>");
-  }
-  args[1].clone()
-});
 
-// Define a static CONFIG that holds the loaded configuration
-pub static CONFIG: Lazy<util::Config> = Lazy::new(|| {
-  let mut file = File::open(&*CONFIG_FILE).expect("Could not open config");
-  let mut contents = String::new();
-  file.read_to_string(&mut contents).expect("Could not read config");
+pub static CONFIG: OnceCell<util::Config> = OnceCell::new();
+pub static LAYER_SETUP_DIR: OnceCell<String> = OnceCell::new();
 
-  serde_yaml::from_str(&contents).expect("Could not parse config")
-});
+/// Initialize the global CONFIG and derived LAYER_SETUP_DIR once (CLI or Python).
+pub fn init_from_yaml(yaml: &str) -> Result<(), String> {
+    let cfg: util::Config = serde_yaml::from_str(yaml).map_err(|e| format!("bad yaml: {e}"))?;
+    CONFIG.set(cfg).map_err(|_| "CONFIG already initialized".to_string())?;
 
-pub static LAYER_SETUP_DIR: Lazy<String> = Lazy::new(|| {
-  let dir = format!(
-    "layer_setup/{}_{}_{}",
-    CONFIG.sf.scale_factor_log, CONFIG.sf.cq_range_log, CONFIG.sf.cq_range_lower_log
-  );
-  assert!(Path::new(&dir).exists() || fs::create_dir_all(&dir).is_ok());
-  dir
-});
+    let cfg = CONFIG.get().unwrap();
+    let dir = format!(
+        "layer_setup/{}_{}_{}",
+        cfg.sf.scale_factor_log, cfg.sf.cq_range_log, cfg.sf.cq_range_lower_log
+    );
+    if !(Path::new(&dir).exists() || fs::create_dir_all(&dir).is_ok()) {
+        return Err(format!("cannot create {dir}"));
+    }
+    LAYER_SETUP_DIR.set(dir).map_err(|_| "LAYER_SETUP_DIR already initialized".to_string())?;
+    Ok(())
+}

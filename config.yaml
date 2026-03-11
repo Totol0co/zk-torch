@@ -1,15 +1,15 @@
 task: sample
 onnx:
-  model_path: sample.onnx
-  input_path: sample.json
+  model_path: onnx/v4_gwb.onnx  #onnx/unit/onnx_layers/matmul512_add.onnx
+  input_path: input_json/input_match_GWB.json
 ptau:
-  ptau_path: challenge
-  pow_len_log: 7
-  loaded_pow_len_log: 7
+  ptau_path: challenge_0022
+  pow_len_log: 22
+  loaded_pow_len_log: 14
 sf:
-  scale_factor_log: 3
-  cq_range_log: 6
-  cq_range_lower_log: 5
+  scale_factor_log: 4
+  cq_range_log: 13
+  cq_range_lower_log: 12
 prover:
   model_path: models
   setup_path: setups
