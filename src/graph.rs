@@ -119,6 +119,18 @@ impl Graph {
         self.basic_blocks[n.basic_block].encodeOutputs(srs, &models[n.basic_block], &myInputs, outputs[i])
       );
     });
+ 
+    // === PUBLIC OUTPUT PATCH (r = 0 for outputs) ===
+    for i in 0..outputsEnc.len() {
+        for j in 0..outputsEnc[i].len() {
+            let arr = &outputsEnc[i][j];
+            outputsEnc[i][j] = arr.map(|d| {
+                crate::basic_block::Data::new_public(srs, &d.raw)
+            });
+        }
+    }
+    // === END PATCH ===
+
     return outputsEnc;
   }
 

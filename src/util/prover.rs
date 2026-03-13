@@ -97,6 +97,36 @@ pub fn convert_to_data(srs: &SRS, a: &ArrayD<Fr>) -> ArrayD<Data> {
   a
 }
 
+
+/// Convertit un ArrayD<Fr> (N‑D) en ArrayD<Data> SANS blinding (r = 0), grâce à Data::new_public().
+pub fn convert_to_data_public(srs: &SRS, arr: &ArrayD<Fr>) -> ArrayD<Data> {
+    let nd = arr.ndim();
+    assert!(nd >= 1, "convert_to_data_public: need at least 1D tensor");
+
+    let shape = arr.shape();
+    let last = shape[nd - 1];
+    let outer_count = arr.len() / last;
+
+    let mut acc: Vec<Data> = Vec::with_capacity(outer_count);
+
+    for lane in arr.view().lanes(Axis(nd - 1)) {
+        let slice: Vec<Fr>;
+        let raw_slice: &[Fr] = if let Some(s) = lane.as_slice() {
+            s
+        } else {
+            slice = lane.to_owned().into_raw_vec();
+            &slice
+        };
+        acc.push(Data::new_public(srs, raw_slice));
+    }
+
+    let out_shape = IxDyn(&shape[..nd - 1]);
+
+    ArrayD::from_shape_vec(out_shape, acc)
+        .expect("convert_to_data_public: shape reconstruction failed")
+}
+
+
 pub fn convert_to_mock_data(srs: &SRS, a: &ArrayD<Fr>) -> ArrayD<Data> {
   if a.ndim() <= 1 {
     return arr0(mock_data_new(srs, a.view().as_slice().unwrap())).into_dyn();
@@ -339,7 +369,6 @@ pub fn zktorch_kernel() {
   println!();
 
   timing.print();
-  println!("Cargo run was successful.");
   println!("Cargo run was successful.");
 
 }

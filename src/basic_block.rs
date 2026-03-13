@@ -118,23 +118,55 @@ pub struct Data {
 }
 
 impl Data {
-  pub fn new(srs: &SRS, raw: &[Fr]) -> Data {
-    let N = raw.len();
-    let domain = GeneralEvaluationDomain::<Fr>::new(N).unwrap();
-    let f = DensePolynomial::from_coefficients_vec(domain.ifft(&raw));
-    let fx = if f.is_zero() {
-      G1Projective::zero()
-    } else {
-      util::msm(&srs.X1A, &f.coeffs)
-    };
-    let mut rng = StdRng::from_entropy();
-    return Data {
-      raw: raw.to_vec(),
-      poly: f,
-      g1: fx,
-      r: Fr::rand(&mut rng),
-    };
-  }
+    pub fn new_public(srs: &SRS, raw: &[Fr]) -> Data {
+        let N = raw.len();
+        let domain = GeneralEvaluationDomain::<Fr>::new(N).unwrap();
+        let f = DensePolynomial::from_coefficients_vec(domain.ifft(&raw));
+
+        let fx = if f.is_zero() {
+            G1Projective::zero()
+        } else {
+            util::msm(&srs.X1A, &f.coeffs)
+        };
+
+        // r = 0  → engagement déterministe
+        let r = Fr::zero();
+
+        Data {
+            raw: raw.to_vec(),
+            poly: f,
+            g1: fx,
+            r,
+        }
+    }
+
+    pub fn new_private(srs: &SRS, raw: &[Fr]) -> Data {
+        let N = raw.len();
+        let domain = GeneralEvaluationDomain::<Fr>::new(N).unwrap();
+        let f = DensePolynomial::from_coefficients_vec(domain.ifft(&raw));
+
+        let fx = if f.is_zero() {
+            G1Projective::zero()
+        } else {
+            util::msm(&srs.X1A, &f.coeffs)
+        };
+
+        // r aléatoire
+        let mut rng = StdRng::from_entropy();
+        let r = Fr::rand(&mut rng);
+
+        Data {
+            raw: raw.to_vec(),
+            poly: f,
+            g1: fx,
+            r,
+        }
+    }
+    
+    pub fn new(srs: &SRS, raw: &[Fr]) -> Data {
+        Self::new_private(srs, raw)
+    }
+
 }
 
 #[derive(Clone, Deserialize, Serialize, Debug, PartialEq)]

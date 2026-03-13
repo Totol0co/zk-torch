@@ -442,27 +442,12 @@ pub fn load_file(filename: &str) -> (Graph, Vec<(ArrayD<Fr>, DatumType)>) {
       &mut basic_blocks_idx,
     );
   }
-    // === PATCH: Fill graph.outputs from ONNX graph outputs ===
-  println!("WIRING ONNX OUTPUTS → graph.outputs");
-
-  for onnx_out in onnx_graph.output.iter() {
-      let name = &onnx_out.name;
-      if let Some(pairs) = outputs_idx.get(name) {
-          for (node_idx, out_idx) in pairs {
-              println!(" -> Output '{}' mapped to (node {}, output {})", name, node_idx, out_idx);
-              graph.outputs.push((*node_idx, *out_idx));
-          }
-      } else {
-          eprintln!("WARNING: ONNX output '{}' not found in outputs_idx!", name);
-      }
-  }
-  // === END PATCH ===
 
   propagate_precomputable(&mut graph);
 
   #[cfg(feature = "fold")]
   {
-    let mut bb_to_index = HashMap::new();
+    let mut bb_to_index = HashMap::new(); 
     graph.foldable_bb_map = graph
       .basic_blocks
       .iter()

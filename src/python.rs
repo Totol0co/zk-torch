@@ -14,8 +14,9 @@ use ark_bn254::{Fr, G1Affine, G2Affine};
 use ndarray::ArrayD;
 use rand::{SeedableRng, rngs::StdRng};
 use plonky2::util::timing::TimingTree;
+use sha3::{Digest, Keccak256};
 
-/// A simple serializer to bytes for any ark-serialize type.
+///  serializer to bytes for ark-serialize types
 fn to_vec_bytes<T: CanonicalSerialize>(value: &T) -> PyResult<Vec<u8>> {
     let mut v = Vec::new();
     value.serialize_uncompressed(&mut v)
@@ -27,9 +28,7 @@ fn from_bytes<T: CanonicalDeserialize>(bytes: &[u8]) -> PyResult<T> {
         .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("deserialize: {e:?}")))
 }
 
-
-use sha3::{Digest, Keccak256};
-
+/// randomness is seeded from the model, input and output encryption
 fn fs_seed_from_encodings<T: ?Sized, U: ?Sized, V: ?Sized>(
     models_enc: &T,
     inputs_enc: &U,
@@ -76,8 +75,8 @@ pub struct ZkTorchSession {
 
 #[pymethods]
 impl ZkTorchSession {
-    /// Initialize from a YAML string (same schema as the CLI config).
-    /// `fold` must match how you compile the extension (see build section).
+    /// Initialize from a YAML string (same schema as the config.yaml file).
+    /// `fold` must match how you compile the extension 
     #[new]
     pub fn new(config_yaml: &str, fold: bool) -> PyResult<Self> {
         // initialize global CONFIG + LAYER_SETUP_DIR exactly once
@@ -101,9 +100,7 @@ impl ZkTorchSession {
 
     }
 
-    /// Run setup for all blocks in the DAG; returns a serialized Vec of (G1,G2,poly) tuples.
-    
-    /// Run setup for all blocks in the DAG; returns serialized bytes.
+    /// Run setup for all blocks in the DAG
     pub fn setup(&self, py: Python<'_>) -> PyResult<Py<PyBytes>> {
         let setups = self.graph.setup(&self.srs, &self.models_data.iter().collect());                     
         let bytes = to_vec_bytes(&setups)?;
@@ -111,37 +108,30 @@ impl ZkTorchSession {
      }
 
 
-    /// Prove with optional JSON input file. If None, random inputs are generated (same as CLI behaviour).
+    /// Prove with optional JSON input file. If None, random inputs are generated.
     /// Returns (proofs_bytes, acc_proofs_bytes_or_none)
     pub fn prove(&mut self, py: Python<'_>, input_json: Option<&str>) -> PyResult<(Py<PyBytes>, Option<Py<PyBytes>>)> {
+
         // 1) Build inputs for the ONNX graph (either from JSON or generate)
-        
         let cfg = crate::CONFIG.get().unwrap();
-        // util::onnx module exposes filename-only helpers
         let inputs_fr: Vec<ArrayD<Fr>> = if let Some(p) = input_json {
             util::load_inputs_from_json_for_onnx(&cfg.onnx.model_path, p)
         } else {
             util::generate_fake_inputs_for_onnx(&cfg.onnx.model_path)
         };
 
-
         // 2) Forward pass in finite field to obtain outputs (witness tensors)
-        
         let input_refs: Vec<&ArrayD<Fr>> = inputs_fr.iter().collect();
         let model_refs: Vec<&ArrayD<Fr>> = self.models.iter().map(|(m, _)| m).collect();
         let outputs_fr = self.graph.run(&input_refs, &model_refs)
              .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("CQ range error at input={:?}", e.input)))?; 
 
         // 3) Encode inputs & outputs to KZG-committed vectors (Data)
-        
-        let inputs_data: Vec<ArrayD<Data>> = inputs_fr.iter().map(|m| util::convert_to_data(&self.srs, m)).collect();
+        let inputs_data: Vec<ArrayD<Data>> = inputs_fr.iter().map(|m| util::convert_to_data_public(&self.srs, m)).collect();
         let inputs_data_enc: Vec<ArrayD<DataEnc>> =
             inputs_data.iter().map(|d| d.map(|x| DataEnc::new(&self.srs, x))).collect();
-
         let input_data_refs: Vec<&ArrayD<Data>> = inputs_data.iter().collect();
         
-        
-        // DAG node outputs are Vec<Vec<ArrayD<Fr>>>; encodeOutputs wants &Vec<&Vec<&ArrayD<Fr>>>. Build an owned container first.
          let outputs_refs_owned_fr: Vec<Vec<&ArrayD<Fr>>> =
              outputs_fr.iter().map(|v| v.iter().collect::<Vec<_>>()).collect();
          let outputs_refs_fr: Vec<&Vec<&ArrayD<Fr>>> =
@@ -156,12 +146,21 @@ impl ZkTorchSession {
             &mut timing
         );
 
+        
+        let outputs_data_public: Vec<Vec<ArrayD<Data>>> =
+            outputs_data.iter()
+                .map(|vv| vv.iter()
+                    .map(|darr| darr.map(|d| Data::new_public(&self.srs, &d.raw)))
+                    .collect()
+                ).collect();
+
+
         let outputs_enc: Vec<Vec<ArrayD<DataEnc>>> =
-            outputs_data.iter().map(|vv| vv.iter().map(|d| d.map(|x| DataEnc::new(&self.srs, x))).collect()).collect();
+            outputs_data_public.iter().map(|vv| vv.iter().map(|d| d.map(|x| DataEnc::new(&self.srs, x))).collect()).collect();
         self.last_inputs_enc = Some(inputs_data_enc.clone());
         self.last_outputs_enc = Some(outputs_enc.clone());
 
-        // 4) Setup (affine) for all BBs
+        // 4) Setup (affine) for all basic blocks
         let setups_proj = self.graph.setup(&self.srs, &self.models_data.iter().collect());
         // Convert projective to affine for the prover/ verifier APIs:
         let setups_aff: Vec<(Vec<G1Affine>, Vec<G2Affine>, _)> = setups_proj.iter().map(|(g1p, g2p, polys)| {
@@ -170,7 +169,6 @@ impl ZkTorchSession {
         let setups_refs: Vec<(&Vec<G1Affine>, &Vec<G2Affine>, &_)> = setups_aff.iter().map(|(a,b,c)| (a,b,c)).collect();
 
         // 5) Prove
-        
         let seed = fs_seed_from_encodings(&self.models_enc, &inputs_data_enc, &outputs_enc)?;
         let mut rng = StdRng::from_seed(seed);
 
@@ -179,10 +177,8 @@ impl ZkTorchSession {
         
         #[cfg(not(feature = "fold"))]
         {
-            // Build Vec<Vec<&ArrayD<Data>>> then &Vec<&Vec<&ArrayD<Data>>>
-            
             let outputs_refs_owned: Vec<Vec<&ArrayD<Data>>> =
-                outputs_data.iter().map(|vv| vv.iter().collect::<Vec<_>>()).collect();
+                outputs_data_public.iter().map(|vv| vv.iter().collect::<Vec<_>>()).collect(); // Build Vec<Vec<&ArrayD<Data>>> then &Vec<&Vec<&ArrayD<Data>>>
             let outputs_refs: Vec<&Vec<&ArrayD<Data>>> =
                 outputs_refs_owned.iter().collect();
 
@@ -205,11 +201,9 @@ impl ZkTorchSession {
         #[cfg(feature = "fold")]
         {
             let outputs_refs_owned: Vec<Vec<&ArrayD<Data>>> =
-                outputs_data.iter().map(|vv| vv.iter().collect::<Vec<_>>()).collect();
+                outputs_data_public.iter().map(|vv| vv.iter().collect::<Vec<_>>()).collect();
             let outputs_refs: Vec<&Vec<&ArrayD<Data>>> =
                 outputs_refs_owned.iter().collect();
-
-
 
             let (proofs, acc_proofs) = self.graph.prove(
                 &self.srs,
@@ -229,7 +223,7 @@ impl ZkTorchSession {
 
     }
 
-    /// Verify proofs (and accumulator proofs if built with `fold`).
+    /// Verify proofs (and accumulator proofs if built with `fold`)
     pub fn verify(&self, py: Python<'_>, proofs: &PyAny, acc_proofs: Option<&PyAny>) -> PyResult<bool> {
 
         let mut timing = TimingTree::new("verify", log::Level::Info);
@@ -243,7 +237,7 @@ impl ZkTorchSession {
         let seed = fs_seed_from_encodings(&self.models_enc, inputs_enc, outputs_enc)?;
         let mut rng = StdRng::from_seed(seed);
         
-        // helper to read a Python object into Vec<u8> (safe, no `unsafe`)
+        // helper to read a Python object into Vec<u8> 
         fn read_bytes<'py>(_py: Python<'py>, any: &PyAny) -> PyResult<Vec<u8>> {
             // 1) bytes
             if let Ok(b) = any.downcast::<PyBytes>() {                
@@ -266,10 +260,6 @@ impl ZkTorchSession {
             ))
         }
 
-        // Deserialize inputs for verify
-        // For non-fold: Vec<(Vec<G1Affine>, Vec<G2Affine>, Vec<Fr>)>
-        // For fold: Vec<(Vec<G1Affine>, Vec<G2Affine>, Vec<Fr>)> + Vec<(Vec<G1Affine>, Vec<G2Affine>, Vec<Fr>, Vec<_Gt_>)>
-        
         #[cfg(not(feature = "fold"))]
         {
             // Deserialize proofs
@@ -289,7 +279,6 @@ impl ZkTorchSession {
                 outputs_enc.iter().map(|vv| vv.iter().collect::<Vec<_>>()).collect();
             let outputs_enc_refs: Vec<&Vec<&ArrayD<DataEnc>>> =
                 outputs_refs_owned_enc.iter().collect();
-
 
             // Verify
             self.graph.verify(
@@ -330,7 +319,7 @@ impl ZkTorchSession {
             let outputs_enc_refs: Vec<&Vec<&ArrayD<DataEnc>>> =
                 outputs_refs_owned_enc.iter().collect();
 
-
+            // Verify
             let (_final_proofs_idx, _final_acc_idx) = self.graph.verify(
                 &self.srs,
                 &model_enc_refs,
@@ -345,6 +334,48 @@ impl ZkTorchSession {
 
         }
     }
+
+    /// WIP
+    /// Return True iff `input_json` encodes to the exact same commitments inputsEnc as the inputs used by the most recent `prove()` call
+    pub fn input_verify(&self, input_json: &str) -> PyResult<bool> {
+        // 0) Must have proved at least once in this session
+        let cached = self.last_inputs_enc.as_ref().ok_or_else(|| {
+            pyo3::exceptions::PyRuntimeError::new_err(
+                "No cached inputsEnc; call prove() first in this session"
+            )
+        })?;
+
+        // 1) Rebuild the inputs from JSON with the same ONNX pipeline
+        let cfg = crate::CONFIG.get().unwrap();
+        let inputs_fr: Vec<ArrayD<Fr>> =
+            crate::util::load_inputs_from_json_for_onnx(&cfg.onnx.model_path, input_json);
+
+        // 2) Encode to Data -> DataEnc using the PUBLIC encoder (r = 0 !)
+        let inputs_data: Vec<ArrayD<Data>> =
+            inputs_fr.iter().map(|m| crate::util::convert_to_data_public(&self.srs, m)).collect();
+
+        let inputs_enc_new: Vec<ArrayD<DataEnc>> =
+            inputs_data.iter().map(|d| d.map(|x| DataEnc::new(&self.srs, x))).collect();
+
+        // 3) Pairwise commitment equality check (byte-for-byte)
+        if inputs_enc_new.len() != cached.len() {
+            return Ok(false);
+        }
+        for (a, b) in inputs_enc_new.iter().zip(cached.iter()) {
+            let ab = bincode::serialize(a).map_err(|e|
+                pyo3::exceptions::PyRuntimeError::new_err(format!("bincode new inputsEnc: {e}"))
+            )?;
+            let bb = bincode::serialize(b).map_err(|e|
+                pyo3::exceptions::PyRuntimeError::new_err(format!("bincode cached inputsEnc: {e}"))
+            )?;
+            if ab != bb {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
+
 }
 
 #[pymodule]
