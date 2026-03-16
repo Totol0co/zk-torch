@@ -459,6 +459,18 @@ pub fn load_file(filename: &str) -> (Graph, Vec<(ArrayD<Fr>, DatumType)>) {
       })
       .collect();
   }
+  // === FILL GRAPH OUTPUTS FROM ONNX ===
+  // Map the final output of the ONNX to (node_idx, port) in the graph
+  for out in onnx_graph.output.iter() {
+      let name = &out.name;
+      if let Some(v) = outputs_idx.get(name) {
+          // v : Vec<(i32 /*node*/, usize /*port*/)>
+          graph.outputs.extend(v.iter().cloned());
+      } else {
+          println!("[WARN] ONNX output '{}' not in outputs_idx", name);
+      }
+  }
+  // === END PATCH ===
 
   (graph, models)
 }

@@ -78,6 +78,28 @@ impl Graph {
     return Ok(outputs);
   }
 
+
+
+  /// Return the final (sink) plaintext outputs (Fr) from `run()`.
+  /// Uses the canonical `self.outputs` list of (node_index, output_port)
+  /// established during graph construction.
+  pub fn collect_model_outputs(&self, outputs_fr: &Vec<Vec<ArrayD<Fr>>>) -> Vec<ArrayD<Fr>> {
+      let mut res = Vec::with_capacity(self.outputs.len());
+      for (node_idx, out_idx) in &self.outputs {
+          // Skip global inputs (negative indices). Final outputs come from nodes >= 0.
+          if *node_idx >= 0 {
+              let i = *node_idx as usize;
+              let j = *out_idx;
+              res.push(outputs_fr[i][j].clone());
+          }
+      }
+      res
+  }
+
+
+
+
+
   pub fn encodeOutputs(
     &self,
     srs: &SRS,
@@ -119,18 +141,52 @@ impl Graph {
         self.basic_blocks[n.basic_block].encodeOutputs(srs, &models[n.basic_block], &myInputs, outputs[i])
       );
     });
- 
-    // === PUBLIC OUTPUT PATCH (r = 0 for outputs) ===
-    for i in 0..outputsEnc.len() {
-        for j in 0..outputsEnc[i].len() {
-            let arr = &outputsEnc[i][j];
-            outputsEnc[i][j] = arr.map(|d| {
-                crate::basic_block::Data::new_public(srs, &d.raw)
-            });
+    
+    // === PUBLIC OUTPUT PATCH (r = 0 ONLY for final graph outputs) ===
+
+    // Mark final outputs according to `self.outputs`
+    let mut is_final = vec![Vec::<bool>::new(); self.nodes.len()];
+    for i in 0..self.nodes.len() {
+        is_final[i] = vec![false; outputsEnc[i].len()];
+    }
+    for (node_idx, out_idx) in &self.outputs {
+        if *node_idx >= 0 {
+            let i = *node_idx as usize;
+            let j = *out_idx;
+            if i < is_final.len() && j < is_final[i].len() {
+                // Set r=0 only for nodes that are actually encoded (non-precomputable)
+                if !self.precomputable.encodeOutputs[i] {
+                    is_final[i][j] = true;
+                }
+            }
         }
     }
-    // === END PATCH ===
 
+    // Make only the final outputs public (r = 0)
+    for i in 0..outputsEnc.len() {
+        if self.precomputable.encodeOutputs[i] {
+            continue; // this node is skipped (precomputable), not encoded/proved
+        }
+        for j in 0..outputsEnc[i].len() {
+            if is_final[i][j] {
+                let arr = &outputsEnc[i][j];
+                outputsEnc[i][j] = arr.map(|d| {
+                    crate::basic_block::Data::new_public(srs, &d.raw)
+                });
+            }
+        }
+    }
+
+    // Debug: how many outputs were set to r=0
+    let mut cnt = 0usize;
+    for i in 0..outputsEnc.len() {
+        for j in 0..outputsEnc[i].len() {
+            if is_final[i][j] { cnt += 1; }
+        }
+    }
+    println!("[encodeOutputs] public finals set to r=0 = {}", cnt);
+
+    // === END PATCH ===
     return outputsEnc;
   }
 
