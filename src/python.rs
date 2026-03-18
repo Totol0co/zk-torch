@@ -97,7 +97,7 @@ pub struct ZkTorchSession {
     fold: bool,
     last_inputs_enc: Option<Vec<ArrayD<DataEnc>>>,
     last_outputs_enc: Option<Vec<Vec<ArrayD<DataEnc>>>>,
-
+    setups_aff: Option<Vec<(Vec<G1Affine>, Vec<G2Affine>, Vec<ark_poly::univariate::DensePolynomial<Fr>>)>>,
 }
 
 #[pymethods]
@@ -122,21 +122,58 @@ impl ZkTorchSession {
 
         Ok(Self {
             srs, graph, models, models_data, models_enc, fold,
-            last_inputs_enc: None, last_outputs_enc: None,
+            last_inputs_enc: None, last_outputs_enc: None, setups_aff: None,
         })
 
     }
 
-    /// Run setup for all blocks in the DAG
-    pub fn setup(&self, py: Python<'_>) -> PyResult<Py<PyBytes>> {
-        let setups = self.graph.setup(&self.srs, &self.models_data.iter().collect());                     
-        let bytes = to_vec_bytes(&setups)?;
+    
+    /// Run setup once, convert to affine, cache it, and return bytes to persist/ship.
+    /// NOTE: Make this &mut self to fill the cache.
+    pub fn setup(&mut self, py: Python<'_>) -> PyResult<Py<PyBytes>> {
+        let setups_proj = self.graph.setup(&self.srs, &self.models_data.iter().collect());
+        let setups_aff: Vec<(Vec<G1Affine>, Vec<G2Affine>, _)> = setups_proj.iter().map(|(g1p,g2p,polys)| {
+            (
+                g1p.iter().map(|x| (*x).into()).collect(),
+                g2p.iter().map(|x| (*x).into()).collect(),
+                polys.clone()
+            )
+        }).collect();
+        // cache for reuse in prove()
+        self.setups_aff = Some(setups_aff.clone());
+        // return bytes (affine) to persist or ship to another machine
+        let bytes = to_vec_bytes(&setups_aff)?;
         Ok(PyBytes::new(py, &bytes).into())
-     }
+    }
+
+    /// Load precomputed setups (affine) from bytes produced by setup()
+    /// This enables proving on a different machine without recomputing setup.
+    pub fn load_setups_from_bytes(&mut self, py: Python<'_>, any: &PyAny) -> PyResult<()> {
+        // generic "read bytes" helper like in verify()/output_verify()
+        fn read_bytes<'py>(_py: Python<'py>, any: &PyAny) -> PyResult<Vec<u8>> {
+            if let Ok(b) = any.downcast::<PyBytes>() { return Ok(b.as_bytes().to_vec()); }
+            if let Ok(v) = any.extract::<Vec<u8>>() { return Ok(v); }
+            if let Ok(lst) = any.downcast::<pyo3::types::PyList>() {
+                let mut v = Vec::with_capacity(lst.len());
+                for it in lst.iter() { v.push(it.extract::<u8>()?); }
+                return Ok(v);
+            }
+            Err(pyo3::exceptions::PyTypeError::new_err(
+                "expected bytes, bytearray, memoryview, list[int], or any buffer-compatible object",
+            ))
+        }
+        let bytes = read_bytes(py, any)?;
+        // Deserialize affine setups: Vec<(Vec<G1Affine>, Vec<G2Affine>, Vec<DensePolynomial<Fr>>)>
+        let setups_aff: Vec<(Vec<G1Affine>, Vec<G2Affine>, Vec<ark_poly::univariate::DensePolynomial<Fr>>)>
+            = from_bytes(&bytes)?;
+        self.setups_aff = Some(setups_aff);
+        Ok(())
+    }
 
 
-    /// Prove with optional JSON input file. If None, random inputs are generated.
-    /// Returns (proofs_bytes, acc_proofs_bytes_or_none)
+
+    /// Prove with  JSON input file. If None, random inputs are generated.
+    /// Returns (proofs_bytes, acc_proofs_bytes, output_bytes)
     pub fn prove(&mut self, py: Python<'_>, input_json: Option<&str>) -> PyResult<(Py<PyBytes>, Option<Py<PyBytes>>, Py<PyBytes>)> {
 
         // 1) Build inputs for the ONNX graph (either from JSON or generate)
@@ -198,13 +235,14 @@ impl ZkTorchSession {
         self.last_inputs_enc = Some(inputs_data_enc.clone());
         self.last_outputs_enc = Some(outputs_enc.clone());
 
-        // 4) Setup (affine) for all basic blocks
-        let setups_proj = self.graph.setup(&self.srs, &self.models_data.iter().collect());
-        // Convert projective to affine for the prover/ verifier APIs:
-        let setups_aff: Vec<(Vec<G1Affine>, Vec<G2Affine>, _)> = setups_proj.iter().map(|(g1p, g2p, polys)| {
-            (g1p.iter().map(|x| (*x).into()).collect(), g2p.iter().map(|x| (*x).into()).collect(), polys.clone())
-        }).collect();
-        let setups_refs: Vec<(&Vec<G1Affine>, &Vec<G2Affine>, &_)> = setups_aff.iter().map(|(a,b,c)| (a,b,c)).collect();
+        
+        // 4) reuse setups computed or loaded earlier
+        let setups_aff = self.setups_aff.as_ref().ok_or_else(||
+            pyo3::exceptions::PyRuntimeError::new_err("No setups cached. Call setup() or load_setups_from_bytes() before prove().")
+        )?;
+        let setups_refs: Vec<(&Vec<G1Affine>, &Vec<G2Affine>, &Vec<ark_poly::univariate::DensePolynomial<Fr>>)>
+            = setups_aff.iter().map(|(a,b,c)| (a,b,c)).collect();
+
 
         // 5) Prove
         let seed = fs_seed_from_encodings(&self.models_enc, &inputs_data_enc, &outputs_enc)?;
@@ -260,7 +298,6 @@ impl ZkTorchSession {
             let abytes = to_vec_bytes(&acc_proofs)?;
             let out_plain = PyBytes::new(py, &model_outputs_bytes).into();
             return Ok((PyBytes::new(py, &pbytes).into(), Some(PyBytes::new(py, &abytes).into()), out_plain));
-
 
         }
 
@@ -502,7 +539,6 @@ impl ZkTorchSession {
         // All sinks matched the cached commitments
         Ok(true)
     }
-
 
     /// Returns a Python list of tuples: (shape: List[int], flat_data_ints: List[int])
     /// It decodes the bincode 'out_plain' (Vec<PlainNdArray>) and maps Fr -> signed int via fr_to_int.
