@@ -201,6 +201,7 @@ fn get_local_graph(
     "Tile" => Ok(TileLayer::graph(&input_shapes, &input_types, &node_constants, &node_attributes)),
     "Shape" => Ok(ShapeLayer::graph(&input_shapes, &input_types, &node_constants, &node_attributes)),
     "Sigmoid" => Ok(SigmoidLayer::graph(&input_shapes, &input_types, &node_constants, &node_attributes)),
+    "Sign" => Ok(SignLayer::graph(&input_shapes, &input_types, &node_constants, &node_attributes)),
     "Equal" => Ok(EqualLayer::graph(&input_shapes, &input_types, &node_constants, &node_attributes)),
     "Where" => Ok(WhereLayer::graph(&input_shapes, &input_types, &node_constants, &node_attributes)),
     "Expand" => Ok(ExpandLayer::graph(&input_shapes, &input_types, &node_constants, &node_attributes)),

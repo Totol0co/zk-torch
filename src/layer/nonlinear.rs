@@ -63,3 +63,4 @@ define_nonlinear_layer!(SinLayer, SinBasicBlock);
 define_nonlinear_layer!(TanLayer, TanBasicBlock);
 define_nonlinear_layer!(ReciprocalLayer, ReciprocalBasicBlock);
 define_nonlinear_layer!(GeLULayer, GeLUBasicBlock);
+define_nonlinear_layer!(SignLayer, SignBasicBlock);

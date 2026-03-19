@@ -17,7 +17,7 @@ def bench_zktorch(
     cq_range_lower_log: int = 7,
     # Must match how the extension was built (features: fold / mock_prove etc.)
     fold: bool = True,
-    # Enable on-disk caching for some CQ setups (see README)
+    # Enable on-disk caching for some CQ setups 
     enable_layer_setup: bool = False,
 ) -> Dict[str, Any]:
     """

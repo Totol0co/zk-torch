@@ -1,7 +1,7 @@
 task: sample
 onnx:
-  model_path: onnx/v4_gwb.onnx  #onnx/unit/onnx_layers/matmul512_add.onnx
-  input_path: input_json/input_match_GWB.json
+  model_path: onnx/unit/test/sign.onnx  #onnx/unit/onnx_layers/matmul512_add.onnx
+  input_path: #input_json/input_match_GWB.json
 ptau:
   ptau_path: challenge_0022
   pow_len_log: 22

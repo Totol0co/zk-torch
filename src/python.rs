@@ -85,6 +85,20 @@ fn from_plain_ndarray(p: &PlainNdArray) -> ndarray::ArrayD<Fr> {
         .expect("PlainNdArray: shape/data mismatch")
 }
 
+fn read_bytes<'py>(_: Python<'py>, any: &PyAny) -> PyResult<Vec<u8>> {
+    if let Ok(b) = any.downcast::<PyBytes>() { return Ok(b.as_bytes().to_vec()); }
+    if let Ok(v) = any.extract::<Vec<u8>>()   { return Ok(v); }
+    if let Ok(lst) = any.downcast::<PyList>() {
+        let mut v = Vec::with_capacity(lst.len());
+        for it in lst.iter() { v.push(it.extract::<u8>()?); }
+        return Ok(v);
+    }
+    Err(pyo3::exceptions::PyTypeError::new_err(
+        "expected bytes, bytearray, memoryview, list[int], or any buffer-compatible object",
+    ))
+}
+
+
 #[pyclass]
 pub struct ZkTorchSession {
     srs: SRS,
@@ -146,27 +160,66 @@ impl ZkTorchSession {
         Ok(PyBytes::new(py, &bytes).into())
     }
 
-    /// Load precomputed setups (affine) from bytes produced by setup()
-    /// This enables proving on a different machine without recomputing setup.
-    pub fn load_setups_from_bytes(&mut self, py: Python<'_>, any: &PyAny) -> PyResult<()> {
-        // generic "read bytes" helper like in verify()/output_verify()
-        fn read_bytes<'py>(_py: Python<'py>, any: &PyAny) -> PyResult<Vec<u8>> {
-            if let Ok(b) = any.downcast::<PyBytes>() { return Ok(b.as_bytes().to_vec()); }
-            if let Ok(v) = any.extract::<Vec<u8>>() { return Ok(v); }
-            if let Ok(lst) = any.downcast::<pyo3::types::PyList>() {
-                let mut v = Vec::with_capacity(lst.len());
-                for it in lst.iter() { v.push(it.extract::<u8>()?); }
-                return Ok(v);
-            }
-            Err(pyo3::exceptions::PyTypeError::new_err(
-                "expected bytes, bytearray, memoryview, list[int], or any buffer-compatible object",
-            ))
-        }
-        let bytes = read_bytes(py, any)?;
-        // Deserialize affine setups: Vec<(Vec<G1Affine>, Vec<G2Affine>, Vec<DensePolynomial<Fr>>)>
-        let setups_aff: Vec<(Vec<G1Affine>, Vec<G2Affine>, Vec<ark_poly::univariate::DensePolynomial<Fr>>)>
-            = from_bytes(&bytes)?;
+    
+    /// Run setup and export both setups (affine) and models_enc as bytes.
+    /// Returns (setups_bytes, models_enc_bytes).
+    pub fn setup_and_export_models(
+        &mut self,
+        py: Python<'_>,
+    ) -> PyResult<(Py<PyBytes>, Py<PyBytes>)> {
+        // 1) run your existing setup() (caches self.setups_aff and returns bytes)
+        let setups_bytes = self.setup(py)?;
+
+        // 2) serialize models_enc (Vec<ArrayD<DataEnc>>) via bincode
+        let models_enc_bytes = bincode::serialize(&self.models_enc)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(
+                format!("bincode models_enc: {e}")
+            ))?;
+        let models_enc_py = PyBytes::new(py, &models_enc_bytes).into();
+
+        Ok((setups_bytes, models_enc_py))
+    }
+
+
+    
+/// Load setups (affine) and models_enc from bytes produced by `setup_and_export_models`.
+    /// API: sess.load_setups_and_models_from_bytes(setups_bytes, models_enc_bytes)
+    pub fn load_setups_and_models_from_bytes(
+        &mut self,
+        py: Python<'_>,
+        setups_any: &PyAny,
+        models_enc_any: &PyAny,
+    ) -> PyResult<()> {
+        // 1) setups_aff
+        let setups_bytes = read_bytes(py, setups_any)?;
+        let setups_aff: Vec<(Vec<G1Affine>, Vec<G2Affine>, Vec<ark_poly::univariate::DensePolynomial<Fr>>)> =
+            from_bytes(&setups_bytes)?;
         self.setups_aff = Some(setups_aff);
+
+        // 2) models_enc
+        let models_enc_bytes = read_bytes(py, models_enc_any)?;
+        let models_enc: Vec<ndarray::ArrayD<DataEnc>> =
+            bincode::deserialize(&models_enc_bytes)
+                .map_err(|e| pyo3::exceptions::PyValueError::new_err(
+                    format!("bincode models_enc: {e}")
+                ))?;
+
+        // Basic sanity checks against current graph/models
+        if models_enc.len() != self.models.len() {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                format!("models_enc len {} != models len {}", models_enc.len(), self.models.len())
+            ));
+        }
+        // (optional) check a few shapes match expected (same per-basic-block arity)
+        for (i, (enc_arr, (orig_arr, _))) in models_enc.iter().zip(self.models.iter()).enumerate() {
+            // each DataEnc array must have same ndim/shape as convert_to_data() output along axes except last-slice packing;
+            // you can tailor stricter checks if you want.
+            if enc_arr.ndim() != orig_arr.ndim().saturating_sub(1) {
+                eprintln!("[warn] models_enc[{}] ndim mismatch vs original model tensor", i);
+            }
+        }
+
+        self.models_enc = models_enc;
         Ok(())
     }
 
@@ -300,7 +353,6 @@ impl ZkTorchSession {
             return Ok((PyBytes::new(py, &pbytes).into(), Some(PyBytes::new(py, &abytes).into()), out_plain));
 
         }
-
     }
 
     /// Verify proofs (and accumulator proofs if built with `fold`)

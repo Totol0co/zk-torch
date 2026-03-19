@@ -130,7 +130,7 @@ if __name__ == "__main__":
     yaml = """
     task: python_api
     onnx:
-      model_path: sample.onnx
+      model_path: onnx/unit/test/sign.onnx
       input_path: sample.json
     ptau:
       ptau_path: challenge_0014
@@ -138,8 +138,8 @@ if __name__ == "__main__":
       loaded_pow_len_log: 14
     sf:
       scale_factor_log: 4
-      cq_range_log: 7
-      cq_range_lower_log: 6
+      cq_range_log: 13
+      cq_range_lower_log: 12
     prover:
       model_path: models
       setup_path: setups
@@ -157,12 +157,12 @@ if __name__ == "__main__":
       proof_path: proofs
     """
 
-    onnx_model_path = "sample.onnx"
+    onnx_model_path = "onnx/unit/test/sign.onnx"
 
     # Create session, setup, prove, verify
     session = ZkTorchSession(yaml, fold=True)
     _ = session.setup()
-    proofs_bytes, acc_bytes, out_plain = session.prove(input_json="sample.json")
+    proofs_bytes, acc_bytes, out_plain = session.prove(input_json=None)
     ok = session.verify(proofs_bytes, acc_bytes)
     print("verify(proofs, acc):", ok)
 

@@ -57,3 +57,10 @@ make_basic_block!(SinBasicBlock, { |x: f64| { x.sin() } });
 make_basic_block!(TanBasicBlock, { |x: f64| { x.tan() } });
 make_basic_block!(ReciprocalBasicBlock, { |x: f64| { 1. / x } });
 make_basic_block!(GeLUBasicBlock, { |x: f64| { util::gelu(x) } });
+
+make_basic_block!(SignBasicBlock, {
+  |x: f64| {
+    if x > 0.0 { 1.0 } else if x < 0.0 { -1.0 } else { 0.0 }
+  }
+});
+
