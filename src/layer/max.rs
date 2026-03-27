@@ -28,8 +28,16 @@ impl Layer for MaxLayer {
   ) -> (Graph, Vec<Vec<usize>>, Vec<DatumType>) {
     let mut graph = Graph::new();
     // For now we only support the case when there are two inputs and the second input is a constant of a single element. The single element is compared element-wise with the first input
-    if input_shapes.len() == 2 && input_shapes[1].len() == 1 && constants[1].is_some() {
-      let constant = constants[1].unwrap().0.first().unwrap();
+    if input_shapes.len() == 2 && input_shapes[1].len() == 1 && constants[1].is_some() {    
+      let c_fr = constants[1].unwrap().0.first().unwrap();
+      let c_int = util::fr_to_int(*c_fr);
+      eprintln!(
+        "MaxLayer dbg: constant[1] = {:?} (int={})  input_shapes[0]={:?}",
+        c_fr, c_int, input_shapes[0]
+      );
+
+      let constant = c_fr;
+
       let permutation = splat_input(&input_shapes[0], None);
       let input_shape_padded: Vec<_> = input_shapes[0].iter().map(|i| i.next_power_of_two()).collect();
       let cc = graph.addBB(Box::new(CopyConstraintBasicBlock {

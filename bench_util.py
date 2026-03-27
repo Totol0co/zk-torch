@@ -1,6 +1,88 @@
 import time
 from textwrap import dedent
 from typing import Optional, Dict, Any
+import numpy as np
+import struct
+from pyzktorch import ZkTorchSession
+import onnx
+from onnx import TensorProto
+
+
+# ---------- ONNX dtype mapping ----------
+
+try:
+    BF16_DTYPE = np.dtype("bfloat16")  # NumPy >= 1.20/2.0
+except TypeError:
+    BF16_DTYPE = None  # Fallback: cast BF16 to float32.
+
+ONNX_TO_NUMPY_DTYPE = {
+    TensorProto.FLOAT:    np.float32,
+    TensorProto.DOUBLE:   np.float64,
+    TensorProto.FLOAT16:  np.float16,
+    TensorProto.BFLOAT16: BF16_DTYPE if BF16_DTYPE is not None else np.float32,
+    TensorProto.BOOL:     np.bool_,
+    TensorProto.INT8:     np.int8,
+    TensorProto.INT16:    np.int16,
+    TensorProto.INT32:    np.int32,
+    TensorProto.INT64:    np.int64,
+    TensorProto.UINT8:    np.uint8,
+    TensorProto.UINT16:   np.uint16,
+    TensorProto.UINT32:   np.uint32,
+    TensorProto.UINT64:   np.uint64,
+}
+
+def _elemtype_to_np_dtype(elem_type: int) -> np.dtype:
+    if elem_type not in ONNX_TO_NUMPY_DTYPE:
+        raise ValueError(f"Unsupported ONNX elem_type: {elem_type}")
+    return ONNX_TO_NUMPY_DTYPE[elem_type]
+
+def _onnx_out_elem_types(onnx_model_path: str):
+    m = onnx.load(onnx_model_path)
+    outs = list(m.graph.output)
+    return [vi.type.tensor_type.elem_type for vi in outs]
+
+def decode_out_plain(session, out_plain: bytes, onnx_model_path: str):
+    """
+    Decode ZkTorchSession.prove(...)'s 'out_plain' into properly typed NumPy arrays,
+    using the ONNX model's output dtypes and shapes.
+
+    Returns: List[np.ndarray] in the same order as model.graph.output.
+    """
+    model = onnx.load(onnx_model_path)
+    onnx_outputs = list(model.graph.output)  # preserves order
+
+    # Raw decode from Rust: List[(shape: List[int], flat_ints: List[int])]
+    decoded = session.decode_outputs_plain_to_raw(out_plain)
+
+    if len(decoded) != len(onnx_outputs):
+        raise ValueError(
+            f"Mismatch between decoded outputs ({len(decoded)}) and ONNX outputs ({len(onnx_outputs)}). "
+            f"Ensure Graph.outputs is filled and 'out_plain' corresponds to final graph outputs."
+        )
+
+    sf_log = session.get_scale_factor_log()
+    sf = float(1 << sf_log)
+
+    typed = []
+    for (shape, flat_ints), vi in zip(decoded, onnx_outputs):
+        elem_type = vi.type.tensor_type.elem_type
+        np_dtype = _elemtype_to_np_dtype(elem_type)
+
+        # Start from int64 then cast appropriately
+        arr = np.asarray(flat_ints, dtype=np.int64).reshape(tuple(shape))
+
+        if np.issubdtype(np_dtype, np.floating):
+            # Dequantize floats
+            arr = (arr.astype(np.float32) / sf).astype(np_dtype)
+        elif np_dtype == np.bool_:
+            arr = (arr != 0)
+        else:
+            # Integers -> direct cast
+            arr = arr.astype(np_dtype)
+
+        typed.append(arr)
+
+    return typed
 
 def bench_zktorch(
     onnx_model_path: str,
@@ -90,6 +172,15 @@ def bench_zktorch(
     t_prove_start = time.perf_counter()
     proofs_bytes, acc_bytes_opt, out_plain = session.prove(input_json=input_json)
     t_prove_end = time.perf_counter()
+    
+
+    typed_outputs = decode_out_plain(session, out_plain, onnx_model_path=onnx_model_path)
+    for i, arr in enumerate(typed_outputs):
+        print(f"[final output #{i}] dtype={arr.dtype}, shape={arr.shape}\n{arr}\n")
+
+    # Real output check (should be True)
+    ok_output = session.output_verify(out_plain)
+    print("real output check:", ok_output)
 
     # Verify
     t_verify_start = time.perf_counter()

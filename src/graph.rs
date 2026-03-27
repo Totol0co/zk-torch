@@ -465,6 +465,8 @@ impl Graph {
       util::combine_pairing_checks(&pairings.iter().flatten().collect())
     );
     let pairing_check = timed!(timing, "pairings", Bn254::multi_pairing(pairings.0.iter(), pairings.1.iter()));
+    let ok = pairing_check == PairingOutput::zero();
+    println!("Is verification successful? {}", ok);
     assert_eq!(pairing_check, PairingOutput::zero());
   }
 
@@ -589,6 +591,9 @@ impl Graph {
     );
     let pairing_check = timed!(timing, "pairings", Bn254::multi_pairing(pairings.0.iter(), pairings.1.iter()));
     println!("Is verification successful? {}", pairing_check == err_sum);
+    println!("[fold] final_proofs_idx.len() = {}, final_acc_proofs_idx.len() = {}",
+          final_proofs_idx.len(), final_acc_proofs_idx.len());
+
     (final_proofs_idx, final_acc_proofs_idx)
   }
 

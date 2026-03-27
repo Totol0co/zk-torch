@@ -22,3 +22,6 @@ test_onnx.py
 layer_setup
 benchmark
 __pycache__
+simul_quant.py
+gen_unit_l2.py
+new_div.py

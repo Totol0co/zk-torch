@@ -27,6 +27,7 @@ def main():
         fold=args.fold,
         enable_layer_setup=args.enable_layer_setup,
     )
+    print(r)
 
     # Emit only the fields you want, in ONE final JSON line.
     payload = {

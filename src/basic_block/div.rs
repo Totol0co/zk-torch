@@ -18,8 +18,23 @@ impl BasicBlock for DivScalarBasicBlock {
   fn run(&self, _model: &ArrayD<Fr>, inputs: &Vec<&ArrayD<Fr>>) -> Result<Vec<ArrayD<Fr>>, util::CQOutOfRangeError> {
     assert!(inputs.len() == 2 && inputs[0].ndim() == 1 && inputs[1].len() == 1);
     let SF = self.output_SF as i64;
-    let y = util::fr_to_int(inputs[1][0]) as i64;
-    assert!(y > 0);
+    let y_fr = inputs[1][0];
+    let y = util::fr_to_int(y_fr) as i64;
+
+    
+    assert!(
+      y > 0,
+      "DivScalarBasicBlock: y <= 0 détecté. \
+       y_int={}, y_fr={:?}, SF={}, in_len={}, in_min={}, in_max={}, in_first5={:?}",
+      y,
+      y_fr,
+      SF,
+      inputs[0].len(),
+      util::array_into_iter(inputs[0]).map(|x| util::fr_to_int(*x)).min().unwrap_or(0),
+      util::array_into_iter(inputs[0]).map(|x| util::fr_to_int(*x)).max().unwrap_or(0),
+      util::array_into_iter(inputs[0]).take(5).map(|x| util::fr_to_int(*x)).collect::<Vec<_>>()
+    );
+
     let (div, rem): (Vec<_>, Vec<_>) = util::array_into_iter(inputs[0])
       .map(|x| {
         let x = util::fr_to_int(*x) as i64;
