@@ -1,5 +1,5 @@
 from pyzktorch import setup
 
-config= "config.yaml"
+config= "v9_config/config.yaml"
 
-setup("config.yaml")
+setup(config)

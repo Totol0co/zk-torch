@@ -41,6 +41,10 @@ pub struct ProverConfig {
   pub acc_proof_path: String,
   pub final_proof_path: String,
   pub enable_layer_setup: bool,
+  pub final_output_field_json_path: String,
+  pub final_output_float_json_path: String,
+  pub final_output_bin_path: String,
+
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

@@ -1,15 +1,15 @@
 task: sample
 onnx:
-  model_path: sample.onnx  #onnx/unit/onnx_layers/matmul512_add.onnx
-  input_path: #input_json/input_match_GWB.json
+  model_path: onnx/v9.52_gwb.onnx  #onnx/unit/onnx_layers/matmul512_add.onnx
+  input_path: input_json/input_match_GWB.json #input_json/input_match_GWB.json
 ptau:
   ptau_path: challenge_0022
   pow_len_log: 22
-  loaded_pow_len_log: 14
+  loaded_pow_len_log: 17
 sf:
   scale_factor_log: 4
-  cq_range_log: 13
-  cq_range_lower_log: 12
+  cq_range_log: 15
+  cq_range_lower_log: 14
 prover:
   model_path: models
   setup_path: setups
@@ -20,6 +20,9 @@ prover:
   acc_proof_path: acc_proofs
   final_proof_path: final_proofs
   enable_layer_setup: true
+  final_output_field_json_path: final_output_field.json
+  final_output_float_json_path: final_output_float.json
+  final_output_bin_path: final_output
 verifier:
   enc_model_path: modelsEnc
   enc_input_path: inputsEnc

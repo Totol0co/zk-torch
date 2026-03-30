@@ -25,3 +25,8 @@ __pycache__
 simul_quant.py
 gen_unit_l2.py
 new_div.py
+final_output_field.json
+final_output_float.json
+final_output_float_fake.json
+final_output
+v9_config/

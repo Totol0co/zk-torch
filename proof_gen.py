@@ -1,5 +1,5 @@
 from pyzktorch import prove
 
-config= "config.yaml"
+config = "v9_config/config.yaml"
 
-prove("config.yaml")
+prove(config)

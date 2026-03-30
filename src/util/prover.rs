@@ -166,6 +166,28 @@ pub fn witness_gen(
   timed!(timing, "run witness generation", graph.run(inputs, models))
 }
 
+
+// A helper for JSON: shape + flat data
+#[derive(serde::Serialize)]
+struct TensorJson<T> {
+    shape: Vec<usize>,
+    data: Vec<T>,   // flat row-major
+}
+
+fn array_fr_to_field_tensor(arr: &ndarray::ArrayD<ark_bn254::Fr>) -> TensorJson<i128> {
+    let shape = arr.shape().to_vec();
+    let data = arr.iter().map(|x| util::fr_to_int(*x) as i128).collect();
+    TensorJson { shape, data }
+}
+
+fn array_fr_to_float_tensor(arr: &ndarray::ArrayD<ark_bn254::Fr>, sf_log2: usize) -> TensorJson<f32> {
+    let sf = (1usize << sf_log2) as f32;
+    let shape = arr.shape().to_vec();
+    let data = arr.iter().map(|x| (util::fr_to_int(*x) as f32) / sf).collect();
+    TensorJson { shape, data }
+}
+
+
 pub fn prove(
   srs: &SRS,
   inputs: &Vec<&ArrayD<Fr>>,
@@ -175,12 +197,44 @@ pub fn prove(
   graph: &mut Graph,
   timing: &mut TimingTree,
 ) {
+  let final_plain_outputs: Vec<ArrayD<Fr>> = graph.collect_model_outputs(&outputs);
+  // JSON helpers: flatten to {shape, data}
+  #[derive(serde::Serialize)]
+  struct TensorJson<T> { shape: Vec<usize>, data: Vec<T> }
+  let field_tensors: Vec<TensorJson<i128>> = final_plain_outputs.iter().map(|a| {
+    TensorJson {
+      shape: a.shape().to_vec(),
+      data: a.iter().map(|x| util::fr_to_int(*x) as i128).collect(), // integers in field
+    }
+  }).collect();
+  // write quantized/field integers
+  fs::write(
+    &CONFIG.get().unwrap().prover.final_output_field_json_path,
+    serde_json::to_string_pretty(&serde_json::json!({ "outputs": field_tensors })).unwrap()
+  ).unwrap();
+  // optional: write de-quantized floats using scale_factor_log
+  let sf = (1usize << CONFIG.get().unwrap().sf.scale_factor_log) as f32;
+  let float_tensors: Vec<TensorJson<f32>> = final_plain_outputs.iter().map(|a| {
+    TensorJson {
+      shape: a.shape().to_vec(),
+      data: a.iter().map(|x| (util::fr_to_int(*x) as f32) / sf).collect(),
+    }
+  }).collect();
+  fs::write(
+    &CONFIG.get().unwrap().prover.final_output_float_json_path,
+    serde_json::to_string_pretty(&serde_json::json!({ "outputs": float_tensors })).unwrap()
+  ).unwrap();
+  // optional: machine-friendly compact dump
+  let bin = bincode::serialize(&field_tensors).unwrap();
+  fs::write(&CONFIG.get().unwrap().prover.final_output_bin_path, &bin).unwrap();
+
+
   // Encode Data:
   let modelsEnc: Vec<ArrayD<DataEnc>> = util::vec_iter(&models).map(|model| (**model).map(|x| DataEnc::new(srs, x))).collect();
   let inputs: Vec<ArrayD<Data>> = timed!(
     timing,
     "encode inputs",
-    util::vec_iter(inputs).map(|input| convert_to_data(srs, input)).collect()
+    util::vec_iter(inputs).map(|input| convert_to_data_public(srs, input)).collect()
   );
   let inputs: Vec<&ArrayD<Data>> = inputs.iter().map(|input| input).collect();
   let inputsEnc: Vec<ArrayD<DataEnc>> = inputs.iter().map(|x| (*x).map(|y| DataEnc::new(srs, y))).collect();
@@ -191,6 +245,7 @@ pub fn prove(
   let outputs: Vec<&Vec<&ArrayD<Data>>> = outputs.iter().map(|x| x).collect();
   let outputsEnc: Vec<Vec<ArrayD<DataEnc>>> =
     outputs.iter().map(|output| (**output).iter().map(|x| (*x).map(|y| DataEnc::new(srs, y))).collect()).collect();
+
 
   // Save files:
   let modelsEncBytes = bincode::serialize(&modelsEnc).unwrap();
