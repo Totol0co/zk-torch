@@ -126,6 +126,53 @@ pub fn convert_to_data_public(srs: &SRS, arr: &ArrayD<Fr>) -> ArrayD<Data> {
         .expect("convert_to_data_public: shape reconstruction failed")
 }
 
+pub fn convert_to_data_with_rs(srs: &SRS, arr: &ArrayD<Fr>, rs: &[Fr]) -> ArrayD<Data> {
+    let nd = arr.ndim();
+    assert!(nd >= 1, "convert_to_data_with_rs: need at least 1D tensor");
+
+    if nd <= 1 {
+        assert!(
+            rs.len() == 1,
+            "convert_to_data_with_rs: 1D input requires exactly one blinding"
+        );
+        return arr0(Data::new_with_r(
+            srs,
+            arr.view().as_slice().unwrap(),
+            rs[0],
+        ))
+        .into_dyn();
+    }
+
+    let shape = arr.shape();
+    let last = shape[nd - 1];
+    let outer_count = arr.len() / last;
+
+    assert!(
+        rs.len() == outer_count,
+        "convert_to_data_with_rs: expected {} blindings, got {}",
+        outer_count,
+        rs.len()
+    );
+
+    let mut acc: Vec<Data> = Vec::with_capacity(outer_count);
+
+    for (idx, lane) in arr.view().lanes(Axis(nd - 1)).into_iter().enumerate() {
+        let owned;
+        let raw_slice: &[Fr] = if let Some(s) = lane.as_slice() {
+            s
+        } else {
+            owned = lane.to_owned().into_raw_vec();
+            &owned
+        };
+
+        acc.push(Data::new_with_r(srs, raw_slice, rs[idx]));
+    }
+
+    let out_shape = IxDyn(&shape[..nd - 1]);
+    ArrayD::from_shape_vec(out_shape, acc)
+        .expect("convert_to_data_with_rs: shape reconstruction failed")
+}
+
 
 pub fn convert_to_mock_data(srs: &SRS, a: &ArrayD<Fr>) -> ArrayD<Data> {
   if a.ndim() <= 1 {
@@ -187,6 +234,33 @@ fn array_fr_to_float_tensor(arr: &ndarray::ArrayD<ark_bn254::Fr>, sf_log2: usize
     TensorJson { shape, data }
 }
 
+fn bytes_to_hex(bytes: &[u8]) -> String {
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        use std::fmt::Write;
+        write!(&mut s, "{:02x}", b).unwrap();
+    }
+    s
+}
+
+fn fr_to_hex(x: &Fr) -> String {
+    let mut bytes = Vec::new();
+    x.serialize_uncompressed(&mut bytes).unwrap();
+    bytes_to_hex(&bytes)
+}
+
+#[derive(serde::Serialize)]
+struct BlindingTensorJson {
+    shape: Vec<usize>,
+    r: Vec<String>, // serialize Fr as decimal or hex string
+}
+
+fn array_data_r_to_json(arr: &ArrayD<Data>) -> BlindingTensorJson {
+    BlindingTensorJson {
+        shape: arr.shape().to_vec(),
+        r: arr.iter().map(|d| fr_to_hex(&d.r)).collect(),
+    }
+}
 
 pub fn prove(
   srs: &SRS,
@@ -196,7 +270,7 @@ pub fn prove(
   models: Vec<&ArrayD<Data>>,
   graph: &mut Graph,
   timing: &mut TimingTree,
-) {
+  ) {
   let final_plain_outputs: Vec<ArrayD<Fr>> = graph.collect_model_outputs(&outputs);
   // JSON helpers: flatten to {shape, data}
   #[derive(serde::Serialize)]
@@ -234,13 +308,33 @@ pub fn prove(
   let inputs: Vec<ArrayD<Data>> = timed!(
     timing,
     "encode inputs",
-    util::vec_iter(inputs).map(|input| convert_to_data_public(srs, input)).collect()
+    util::vec_iter(inputs).map(|input| convert_to_data(srs, input)).collect()
   );
+
+  let input_blindings: Vec<BlindingTensorJson> =
+    inputs.iter().map(|a| array_data_r_to_json(a)).collect();
+
+  fs::write(
+      &CONFIG.get().unwrap().prover.input_blinding_json_path,
+      serde_json::to_string_pretty(&serde_json::json!({ "inputs": input_blindings })).unwrap(),
+  ).unwrap();
+
   let inputs: Vec<&ArrayD<Data>> = inputs.iter().map(|input| input).collect();
   let inputsEnc: Vec<ArrayD<DataEnc>> = inputs.iter().map(|x| (*x).map(|y| DataEnc::new(srs, y))).collect();
   let outputs: Vec<Vec<&ArrayD<Fr>>> = outputs.iter().map(|output| output.iter().map(|x| x).collect()).collect();
   let outputs: Vec<&Vec<&ArrayD<Fr>>> = outputs.iter().map(|output| output).collect();
   let outputs = timed!(timing, "encode outputs", graph.encodeOutputs(srs, &models, &inputs, &outputs, timing));
+  
+  let final_output_data: Vec<ArrayD<Data>> = graph.collect_model_output_data(&outputs);
+
+  let final_output_blindings: Vec<BlindingTensorJson> =
+      final_output_data.iter().map(|a| array_data_r_to_json(a)).collect();
+
+  fs::write(
+      &CONFIG.get().unwrap().prover.final_output_blinding_json_path,
+      serde_json::to_string_pretty(&serde_json::json!({ "outputs": final_output_blindings })).unwrap(),
+  ).unwrap();
+
   let outputs: Vec<Vec<&ArrayD<Data>>> = outputs.iter().map(|outputs| outputs.iter().map(|x| x).collect()).collect();
   let outputs: Vec<&Vec<&ArrayD<Data>>> = outputs.iter().map(|x| x).collect();
   let outputsEnc: Vec<Vec<ArrayD<DataEnc>>> =

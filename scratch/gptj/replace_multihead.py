@@ -152,10 +152,10 @@ def replace_for_multihead(model):
     return model
 
 # Load the original model
-model = onnx.load('model_gelu_rope.onnx', load_external_data=False)
+model = onnx.load('onnx/GPTj_gelu_rope.onnx', load_external_data=False)
 
 # Apply the pattern replacement
 model = replace_for_multihead(model)
 
 # Save the modified model
-onnx.save(model, 'model_gelu_rope_multi.onnx')
+onnx.save(model, 'onnx/GPTj_gelu_rope_multi.onnx')

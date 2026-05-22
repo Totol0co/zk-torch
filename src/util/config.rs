@@ -44,7 +44,8 @@ pub struct ProverConfig {
   pub final_output_field_json_path: String,
   pub final_output_float_json_path: String,
   pub final_output_bin_path: String,
-
+  pub input_blinding_json_path: String,
+  pub final_output_blinding_json_path: String,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

@@ -30,3 +30,16 @@ final_output_float.json
 final_output_float_fake.json
 final_output
 v9_config/
+bench_div/
+bench_new/
+bench_new_plus/
+bench_out_ezkl_plus2/
+bench_v952/
+demo/
+final_output_blinding.json
+gen_onnx/
+generate_layers.py
+input_blinding.json
+make_conv.py
+squeeze_1x1_to_1.onnx
+sub_0_24.onnx

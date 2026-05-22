@@ -212,6 +212,7 @@ use crate::basic_block::{DataEnc};
 
 use ndarray::{IxDyn};
 
+
 /// Internal: load a file into Vec<u8>
 fn read_all_bytes(p: &str) -> Result<Vec<u8>, String> {
     let mut b = Vec::new();
@@ -225,29 +226,98 @@ fn first_existing_path(primary: &str, fallback: &str) -> String {
     if Path::new(primary).exists() { primary.to_string() } else { fallback.to_string() }
 }
 
-/// Internal: encode public ArrayD<Fr> -> ArrayD<DataEnc>
-fn to_public_dataenc(srs: &SRS, arr: &ArrayD<Fr>) -> ArrayD<DataEnc> {
-    let d = util::convert_to_data_public(srs, arr);               // r = 0 (public)
-    d.map(|x| DataEnc::new(srs, x))                               // deterministic DataEnc
+/// Convert signed i128 back into Fr
+fn fr_from_i128(v: i128) -> Fr {
+    if v >= 0 {
+        Fr::from(v as u128)
+    } else {
+        -Fr::from((-v) as u128)
+    }
 }
+
+/// Read the prover-produced input blindings JSON.
+/// Expected shape:
+/// {
+///   "inputs": [
+///     { "shape": [...], "r": ["...","..."] },
+///     ...
+///   ]
+/// }
+fn load_input_blindings_json(json_path: &str) -> Result<Vec<Vec<Fr>>, String> {
+    let txt = std::fs::read_to_string(json_path)
+        .map_err(|e| format!("read {}: {}", json_path, e))?;
+    let v: Value = serde_json::from_str(&txt)
+        .map_err(|e| format!("parse {}: {}", json_path, e))?;
+
+    let inputs = v.get("inputs")
+        .ok_or("missing key 'inputs'")?
+        .as_array()
+        .ok_or("'inputs' must be an array")?;
+
+    let mut out: Vec<Vec<Fr>> = Vec::with_capacity(inputs.len());
+
+    for (idx, tensor) in inputs.iter().enumerate() {
+        let r_arr = tensor.get("r")
+            .ok_or_else(|| format!("inputs[{}] missing key 'r'", idx))?
+            .as_array()
+            .ok_or_else(|| format!("inputs[{}].r must be an array", idx))?;
+
+        let rs: Result<Vec<Fr>, String> = r_arr.iter().map(|x| {
+            let s = x.as_str()
+                .ok_or_else(|| format!("inputs[{}].r element is not a string", idx))?;
+            fr_from_hex(s)
+        }).collect();
+
+        out.push(rs?);
+    }
+
+    Ok(out)
+}
+
+
 
 /// Internal: deep-equals two Vec<ArrayD<DataEnc>>
 fn dataenc_vec_equal(a: &Vec<ArrayD<DataEnc>>, b: &Vec<ArrayD<DataEnc>>) -> bool {
     if a.len() != b.len() { return false; }
     for (aa, bb) in a.iter().zip(b.iter()) {
         if aa.shape() != bb.shape() { return false; }
-        // DataEnc derives PartialEq
         if aa != bb { return false; }
     }
     true
 }
 
-/// verify that a given JSON input file matches the public inputsEnc on disk.
+fn hex_to_bytes(s: &str) -> Result<Vec<u8>, String> {
+    if s.len() % 2 != 0 {
+        return Err("hex string has odd length".to_string());
+    }
+    let mut out = Vec::with_capacity(s.len() / 2);
+    let chars: Vec<char> = s.chars().collect();
+    for i in (0..chars.len()).step_by(2) {
+        let hi = chars[i].to_digit(16).ok_or_else(|| format!("invalid hex at {}", i))?;
+        let lo = chars[i + 1].to_digit(16).ok_or_else(|| format!("invalid hex at {}", i + 1))?;
+        out.push(((hi << 4) | lo) as u8);
+    }
+    Ok(out)
+}
+
+fn fr_from_hex(s: &str) -> Result<Fr, String> {
+    let bytes = hex_to_bytes(s)?;
+    Fr::deserialize_uncompressed(&*bytes)
+        .map_err(|e| format!("Fr deserialize: {}", e))
+}
+
+fn to_dataenc_with_blindings(srs: &SRS, arr: &ArrayD<Fr>, rs: &[Fr]) -> ArrayD<DataEnc> {
+    let d = util::convert_to_data_with_rs(srs, arr, rs);
+    d.map(|x| DataEnc::new(srs, x))
+}
+
+
+/// verify that a given JSON input file matches the blinded inputsEnc on disk,
+/// using the prover-stored blindings instead of r=0.
 #[pyfunction]
 pub fn verify_public_inputs(config_path: &str, json_input_path: &str) -> PyResult<bool> {
     // Ensure CONFIG (and dirs) are initialized once
     let cfg = ensure_cfg(config_path);
-
 
     // Load SRS
     let srs: &SRS = &ptau::load_file(
@@ -256,18 +326,36 @@ pub fn verify_public_inputs(config_path: &str, json_input_path: &str) -> PyResul
         cfg.ptau.loaded_pow_len_log,
     );
 
-    // Use the same loader used by the prover 
+    // Use the same loader used by the prover
     let inputs_fr: Vec<ArrayD<Fr>> =
         util::load_inputs_from_json_for_onnx(&cfg.onnx.model_path, json_input_path);
 
-    // Encode as PUBLIC encodings (r=0), then DataEnc
-    let local_inputs_enc: Vec<ArrayD<DataEnc>> =
-        inputs_fr.iter().map(|a| to_public_dataenc(srs, a)).collect();
+    // Load prover-produced blindings
+    let input_blindings_path = &cfg.prover.input_blinding_json_path;
+    let input_blindings = load_input_blindings_json(input_blindings_path)
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
 
-    // Load inputsEnc from disk 
+    if input_blindings.len() != inputs_fr.len() {
+        return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+            "input blinding count mismatch: JSON has {}, inputs JSON has {}",
+            input_blindings.len(),
+            inputs_fr.len()
+        )));
+    }
+
+
+    // Rebuild DataEnc with the SAME blindings as prover
+    let local_inputs_enc: Vec<ArrayD<DataEnc>> = inputs_fr
+        .iter()
+        .zip(input_blindings.iter())
+        .enumerate()
+        .map(|(i, (arr, rs))| {to_dataenc_with_blindings(srs, arr, rs)})
+        .collect();
+
+    // Load inputsEnc from disk
     let enc_path = first_existing_path(&cfg.verifier.enc_input_path, &cfg.prover.enc_input_path);
-    let bytes = read_all_bytes(&enc_path).map_err(|e|
-        pyo3::exceptions::PyRuntimeError::new_err(e))?;
+    let bytes = read_all_bytes(&enc_path)
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
     let disk_inputs_enc: Vec<ArrayD<DataEnc>> =
         bincode::deserialize(&bytes).map_err(|e|
             pyo3::exceptions::PyRuntimeError::new_err(format!("deserialize {}: {}", enc_path, e)))?;
@@ -450,7 +538,7 @@ fn parse_float_tensors_from_json_scaled(json_path: &str, sf_log2: usize) -> Resu
     }
     Ok(out)
 }
-
+/*
 /// Python: verify that a given JSON output matches the public outputsEnc on disk.
 /// `mode` = "field" (integers already in the field) or "float" (apply 2^scale_factor_log & round).
 #[pyfunction]
@@ -511,7 +599,7 @@ pub fn verify_public_outputs(config_path: &str, json_output_path: &str, mode: &s
     // 6) Compare deterministic public commitments
     Ok(dataenc_vec_equal(&local_outs_enc, &disk_finals))
 }
-
+*/
 
 
 // ---- Python module init ----
@@ -522,7 +610,7 @@ pub fn pyzktorch(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(verify, m)?)?;
 
     m.add_function(wrap_pyfunction!(verify_public_inputs, m)?)?;
-    m.add_function(wrap_pyfunction!(verify_public_outputs, m)?)?;
+    //m.add_function(wrap_pyfunction!(verify_public_outputs, m)?)?;
 
     Ok(())
 }

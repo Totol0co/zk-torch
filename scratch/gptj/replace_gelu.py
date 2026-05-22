@@ -159,10 +159,10 @@ def replace_gelu(model):
     return model
 
 # Load the original model
-model = onnx.load('GPTj.onnx', load_external_data=False)
+model = onnx.load('onnx/GPTj_16.onnx', load_external_data=False)
 
 # Apply the pattern replacement
 model = replace_gelu(model)
 
 # Save the modified model
-onnx.save(model, 'GPTj_gelu.onnx')
+onnx.save(model, 'onnx/GPTj_gelu.onnx')

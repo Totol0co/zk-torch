@@ -257,11 +257,11 @@ def replace_for_rope_mul(model):
 
 
 # Load the original model
-model = onnx.load('GPTj_gelu.onnx', load_external_data=False)
+model = onnx.load('onnx/GPTj_gelu.onnx', load_external_data=False)
 
 # Apply the pattern replacement
 model = replace_for_rope(model)
 model = replace_for_rope_mul(model)
 
 # Save the modified model
-onnx.save(model, 'GPTj_gelu_rope.onnx')
+onnx.save(model, 'onnx/GPTj_gelu_rope.onnx')

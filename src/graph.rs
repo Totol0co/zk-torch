@@ -96,9 +96,18 @@ impl Graph {
       res
   }
 
-
-
-
+  pub fn collect_model_output_data(
+      &self,
+      outputs_data: &Vec<Vec<ArrayD<Data>>>,
+  ) -> Vec<ArrayD<Data>> {
+      let mut res = Vec::with_capacity(self.outputs.len());
+      for (node_idx, out_idx) in &self.outputs {
+          if *node_idx >= 0 {
+              res.push(outputs_data[*node_idx as usize][*out_idx].clone());
+          }
+      }
+      res
+  }
 
   pub fn encodeOutputs(
     &self,
@@ -142,6 +151,7 @@ impl Graph {
       );
     });
     
+    /*
     // === PUBLIC OUTPUT PATCH (r = 0 ONLY for final graph outputs) ===
 
     // Mark final outputs according to `self.outputs`
@@ -187,6 +197,7 @@ impl Graph {
     println!("[encodeOutputs] public finals set to r=0 = {}", cnt);
 
     // === END PATCH ===
+    */
     return outputsEnc;
   }
 

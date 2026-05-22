@@ -139,6 +139,25 @@ impl Data {
             r,
         }
     }
+    
+    pub fn new_with_r(srs: &SRS, raw: &[Fr], r: Fr) -> Data {
+        let n = raw.len();
+        let domain = GeneralEvaluationDomain::<Fr>::new(n).unwrap();
+        let f = DensePolynomial::from_coefficients_vec(domain.ifft(raw));
+
+        let fx = if f.is_zero() {
+            G1Projective::zero()
+        } else {
+            util::msm(&srs.X1A, &f.coeffs)
+        };
+
+        Data {
+            raw: raw.to_vec(),
+            poly: f,
+            g1: fx,
+            r,
+        }
+    }
 
     pub fn new_private(srs: &SRS, raw: &[Fr]) -> Data {
         let N = raw.len();
