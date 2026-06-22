@@ -1,4 +1,50 @@
-﻿# ZKTorch
+# zk-torch (fork)
+
+This fork extends `zk-torch` with:
+
+- **Python bindings** to run the main pipeline from Python
+- **Public inputs / outputs**
+- **Helpers to verify public values against a generated proof**
+
+## Added features
+
+### Python binding
+
+This fork exposes a Python module to call the proving pipeline directly from Python.
+
+Typical workflow:
+
+- `setup(...)`
+- `prove(...)`
+- `verify(...)`
+
+### Public inputs / outputs
+
+This fork makes the model **inputs** and **outputs** public so they can be checked independently from the proof artifacts.
+
+### Public value verification
+
+This fork also adds helper functions to verify that:
+
+- the provided **public inputs** match the proof
+- the provided **public outputs** match the proof
+
+## Example
+
+```python
+from pyzktorch import setup, prove, verify, verify_public_inputs, verify_public_outputs
+
+config = "config.yaml"
+
+setup(config)
+prove(config)
+verify(config)
+
+assert verify_public_inputs(config, "sample.json")
+assert verify_public_outputs(config, "final_output_float.json", "float")
+```
+
+ # ZKTorch
 
   
 
